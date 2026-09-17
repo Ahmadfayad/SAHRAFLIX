@@ -1,13 +1,19 @@
 package com.sahraflix.presentation.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -15,6 +21,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.tv.material3.Text
+import com.sahraflix.R
+import com.sahraflix.domain.model.CatalogEntry
+import com.sahraflix.domain.model.StreamType
 import com.sahraflix.presentation.components.StreamCard
 import com.sahraflix.presentation.player.PlayerViewModel
 import com.sahraflix.domain.model.toCatalogEntry
@@ -24,6 +33,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
+    val isOnline by viewModel.isOnline.collectAsState()
     val liveStreams = viewModel.liveStreams.collectAsLazyPagingItems()
     val movieStreams = viewModel.movieStreams.collectAsLazyPagingItems()
     val seriesStreams = viewModel.seriesStreams.collectAsLazyPagingItems()
@@ -40,11 +50,26 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { DashboardRail("Continue Watching", continueWatching, playerViewModel) }
-        item { DashboardRail("Live TV: Favorites", favoriteLive, playerViewModel) }
-        item { DashboardRail("What's On Now", epgHighlights, playerViewModel) }
+        if (!isOnline) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFB00020), shape = RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.offline_notice),
+                        color = Color.White
+                    )
+                }
+            }
+        }
+        item { DashboardRail(stringResource(R.string.dashboard_continue_watching), continueWatching, playerViewModel) }
+        item { DashboardRail(stringResource(R.string.dashboard_favorites), favoriteLive, playerViewModel) }
+        item { DashboardRail(stringResource(R.string.dashboard_whats_on), epgHighlights, playerViewModel) }
         item {
-            Text("Live TV")
+            Text(stringResource(R.string.home_live_tv))
         }
         item {
             LazyRow(
@@ -57,10 +82,10 @@ fun HomeScreen(
                             stream = stream,
                             onClick = { playerViewModel.playCatalogEntry(it) },
                             onFocusChanged = { focused ->
-                                val live = (stream as? com.sahraflix.domain.model.CatalogEntry.Iptv)
-                                    ?.stream?.streamType == com.sahraflix.domain.model.StreamType.LIVE
+                                val live = (stream as? CatalogEntry.Iptv)
+                                    ?.stream?.streamType == StreamType.LIVE
                                 if (live && focused) {
-                                    (stream as? com.sahraflix.domain.model.CatalogEntry.Iptv)
+                                    (stream as? CatalogEntry.Iptv)
                                         ?.let { playerViewModel.previewStream(it.stream.streamUrl) }
                                 }
                                 else if (live && !focused) playerViewModel.stopPreview()
@@ -71,7 +96,7 @@ fun HomeScreen(
             }
         }
         item {
-            Text("Movies")
+            Text(stringResource(R.string.home_movies))
         }
         item {
             LazyRow(
@@ -89,7 +114,7 @@ fun HomeScreen(
             }
         }
         item {
-            Text("Series")
+            Text(stringResource(R.string.home_series))
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -100,7 +125,7 @@ fun HomeScreen(
                 }
             }
         }
-        item { Text("Streaming Movies (TMDB)") }
+        item { Text(stringResource(R.string.home_streaming_movies)) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(streamingMovies) { content ->
@@ -111,7 +136,7 @@ fun HomeScreen(
                 }
             }
         }
-        item { Text("Streaming Series (TMDB)") }
+        item { Text(stringResource(R.string.home_streaming_series)) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(streamingShows) { content ->
@@ -128,7 +153,7 @@ fun HomeScreen(
 @Composable
 private fun DashboardRail(
     title: String,
-    entries: List<com.sahraflix.domain.model.CatalogEntry>,
+    entries: List<CatalogEntry>,
     playerViewModel: PlayerViewModel
 ) {
     if (entries.isEmpty()) return

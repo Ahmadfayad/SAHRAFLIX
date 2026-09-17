@@ -6,8 +6,12 @@
     <string name="home_series">Series</string>
     <string name="home_streaming_movies">Streaming Movies (TMDB)</string>
     <string name="home_streaming_series">Streaming Series (TMDB)</string>
+    <string name="dashboard_continue_watching">Continue Watching</string>
+    <string name="dashboard_favorites">Live TV: Favorites</string>
+    <string name="dashboard_whats_on">What\'s On Now</string>
     <string name="search_title">Search</string>
     <string name="settings_title">Settings</string>
     <string name="epg_title">EPG Guide</string>
     <string name="playback_error">Unable to start playback</string>
+    <string name="offline_notice">No Internet Connection. Displaying cached content.</string>
 </resources>

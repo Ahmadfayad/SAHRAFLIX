@@ -42,6 +42,9 @@ android {
             buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         }
         getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         }
     }
@@ -117,6 +120,12 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.7.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    androidTestImplementation("androidx.room:room-testing:2.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
