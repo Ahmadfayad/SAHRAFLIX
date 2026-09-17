@@ -7,6 +7,8 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import com.sahraflix.domain.model.DrmConfig
+import java.util.UUID
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
@@ -35,14 +37,7 @@ class Media3PlayerImpl @Inject constructor(
     @ApplicationContext context: Context
 ) : IptvVideoPlayer {
     private val trackSelector = DefaultTrackSelector(context)
-    private val loadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(
-            15_000,
-            30_000,
-            1_000,
-            5_000
-        )
-        .build()
+    private val loadControl = DynamicLoadControl()
     override val player: Player = ExoPlayer.Builder(context)
         .setTrackSelector(trackSelector)
         .setLoadControl(loadControl)
@@ -93,11 +88,19 @@ class Media3PlayerImpl @Inject constructor(
         }
     }
 
-    override fun playStream(url: String, isLive: Boolean) {
-        // DefaultLoadControl is immutable after ExoPlayer construction in Media3 1.10.
-        // The player is constructed with the live-safe profile; VOD remains seekable and
-        // uses Media3's target-buffer logic rather than recreating the player per title.
-        player.setMediaItem(MediaItem.fromUri(url))
+    override fun playStream(url: String, isLive: Boolean, drm: DrmConfig?) {
+        loadControl.isLive = isLive
+        val item = MediaItem.Builder().setUri(url).apply {
+            drm?.let {
+                setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"))
+                        .setLicenseUri(it.licenseUrl)
+                        .setForceDefaultLicenseUri(it.forceDefaultLicenseUri)
+                        .build()
+                )
+            }
+        }.build()
+        player.setMediaItem(item)
         player.prepare()
         player.play()
     }

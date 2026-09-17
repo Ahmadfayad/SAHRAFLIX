@@ -55,7 +55,16 @@ fun HomeScreen(
                     liveStreams[index]?.let { stream ->
                         StreamCard(
                             stream = stream,
-                            onClick = { playerViewModel.playCatalogEntry(it) }
+                            onClick = { playerViewModel.playCatalogEntry(it) },
+                            onFocusChanged = { focused ->
+                                val live = (stream as? com.sahraflix.domain.model.CatalogEntry.Iptv)
+                                    ?.stream?.streamType == com.sahraflix.domain.model.StreamType.LIVE
+                                if (live && focused) {
+                                    (stream as? com.sahraflix.domain.model.CatalogEntry.Iptv)
+                                        ?.let { playerViewModel.previewStream(it.stream.streamUrl) }
+                                }
+                                else if (live && !focused) playerViewModel.stopPreview()
+                            }
                         )
                     }
                 }

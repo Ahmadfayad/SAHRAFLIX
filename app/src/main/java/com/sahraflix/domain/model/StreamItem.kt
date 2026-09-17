@@ -7,5 +7,8 @@ data class StreamItem(
     val logoUrl: String?,
     val streamType: StreamType,
     val categoryId: String,
-    val playlistId: String
+    val playlistId: String,
+    val previewUrl: String? = null,
+    val catchupType: String? = null,
+    val catchupSource: String? = null
 )

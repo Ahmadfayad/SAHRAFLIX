@@ -117,6 +117,7 @@ class XtreamProviderImpl @Inject constructor(
         var categoryId = UNCATEGORIZED_ID
         var categoryName = "Uncategorized"
         var directSource: String? = null
+        var archiveEnabled = false
 
         reader.beginObject()
         while (reader.hasNext()) {
@@ -127,6 +128,7 @@ class XtreamProviderImpl @Inject constructor(
                 "category_id" -> categoryId = reader.nextNullableString() ?: UNCATEGORIZED_ID
                 "category_name" -> categoryName = reader.nextNullableString() ?: categoryName
                 "direct_source" -> directSource = reader.nextNullableString()
+                "tv_archive" -> archiveEnabled = reader.nextNullableString() == "1"
                 else -> reader.skipValue()
             }
         }
@@ -150,7 +152,9 @@ class XtreamProviderImpl @Inject constructor(
                 streamType = StreamType.MOVIE,
                 categoryId = category.id,
                 playlistId = playlistId,
-                providerId = id
+                providerId = id,
+                catchupType = if (archiveEnabled) "xtream" else null,
+                catchupSource = if (archiveEnabled) "$baseUrl/timeshift/$username/$password/{duration}/{start}.ts" else null
             )
         )
     }

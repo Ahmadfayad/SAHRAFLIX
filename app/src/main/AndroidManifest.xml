@@ -33,5 +33,8 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+        <receiver
+            android:name=".player.PlaybackActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

@@ -35,6 +35,9 @@ class StreamRepositoryImpl @Inject constructor(
         logoUrl = entity.logoUrl,
         streamType = entity.streamType,
         categoryId = entity.categoryId,
-        playlistId = entity.playlistId
+        playlistId = entity.playlistId,
+        previewUrl = entity.streamUrl,
+        catchupType = entity.catchupType,
+        catchupSource = entity.catchupSource
     )
 }

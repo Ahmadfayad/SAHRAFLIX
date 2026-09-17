@@ -72,6 +72,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.7")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.tv:tv-foundation:1.0.0")
@@ -83,6 +84,8 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:1.10.0")
     implementation("androidx.media3:media3-ui:1.10.0")
     implementation("androidx.media3:media3-session:1.10.0")
+    implementation("androidx.media3:media3-cast:1.10.0")
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
 
     implementation("androidx.room:room-runtime:2.7.0")
     implementation("androidx.room:room-ktx:2.7.0")
@@ -102,6 +105,8 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-urlconnection:4.12.0")
     implementation("com.squareup.okio:okio:3.10.2")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
 

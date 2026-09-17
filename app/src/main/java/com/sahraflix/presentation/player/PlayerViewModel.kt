@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.sahraflix.player.CastPlaybackController
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -27,6 +28,7 @@ class PlayerViewModel @Inject constructor(
     val player: IptvVideoPlayer,
     private val contentRepository: ContentRepository,
     private val streamingRepository: StreamingRepository
+    ,private val castPlaybackController: CastPlaybackController
 ) : ViewModel() {
     private val _isHomeVisible = MutableStateFlow(true)
     val isHomeVisible: StateFlow<Boolean> = _isHomeVisible.asStateFlow()
@@ -36,6 +38,8 @@ class PlayerViewModel @Inject constructor(
     val embedUrl: StateFlow<String?> = _embedUrl.asStateFlow()
     private val _playerError = MutableStateFlow<String?>(null)
     val playerError: StateFlow<String?> = _playerError.asStateFlow()
+    private val _isPreviewing = MutableStateFlow(false)
+    val isPreviewing: StateFlow<Boolean> = _isPreviewing.asStateFlow()
     private var bufferingJob: Job? = null
     private var currentRawUrl: String? = null
 
@@ -53,6 +57,21 @@ class PlayerViewModel @Inject constructor(
         _embedUrl.value = null
         player.playStream(url, isLive)
         _isHomeVisible.value = false
+        _isPreviewing.value = false
+    }
+
+    fun previewStream(url: String) {
+        if (url.isBlank() || !_isHomeVisible.value) return
+        bufferingJob?.cancel()
+        currentRawUrl = url
+        _isPreviewing.value = true
+        player.playStream(url, isLive = true)
+    }
+
+    fun stopPreview() {
+        if (!_isPreviewing.value) return
+        _isPreviewing.value = false
+        player.player.stop()
     }
 
     fun playExternally(url: String = currentRawUrl.orEmpty()) {
@@ -73,6 +92,10 @@ class PlayerViewModel @Inject constructor(
             intent.setPackage(null)
             context.startActivity(Intent.createChooser(intent, "Play externally"))
         }
+    }
+
+    fun castCurrent() {
+        currentRawUrl?.takeIf { it.isNotBlank() }?.let(castPlaybackController::play)
     }
 
     fun playCatalogEntry(entry: CatalogEntry) {

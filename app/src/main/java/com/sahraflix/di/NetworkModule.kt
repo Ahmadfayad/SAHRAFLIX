@@ -5,9 +5,11 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
-import okhttp3.CookieJar
-import okhttp3.Cookie
-import okhttp3.HttpUrl
+import okhttp3.dnsoverhttps.DnsOverHttps
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.JavaNetCookieJar
+import java.net.CookieManager
+import java.net.CookiePolicy
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.sahraflix.data.remote.TmdbApi
@@ -26,8 +28,17 @@ import javax.inject.Singleton
 object NetworkModule {
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(CookieJar.NO_COOKIES)
+    fun provideOkHttpClient(): OkHttpClient {
+        val cookieManager = CookieManager(null, CookiePolicy.ACCEPT_ALL)
+        val cookieJar = JavaNetCookieJar(cookieManager)
+        val bootstrap = OkHttpClient.Builder().cookieJar(cookieJar).build()
+        val doh = DnsOverHttps.Builder()
+            .client(bootstrap)
+            .url("https://dns.google/dns-query".toHttpUrl())
+            .build()
+        return OkHttpClient.Builder()
+        .dns(doh)
+        .cookieJar(cookieJar)
         .addInterceptor { chain ->
             chain.proceed(
                 chain.request().newBuilder()
@@ -36,6 +47,7 @@ object NetworkModule {
             )
         }
         .build()
+    }
 
     @Provides
     @Singleton

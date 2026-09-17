@@ -17,6 +17,7 @@ object CatchupUrlFormatter {
         return template
             .replace("{start}", epochStart)
             .replace("{end}", epochEnd)
+            .replace("{duration}", ((endTime - startTime) / 1000L).toString())
             .replace("{timestamp}", epochStart)
             .replace("{utc}", iso.format(Date(startTime)))
             .replace("{start_date}", SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(startTime)))

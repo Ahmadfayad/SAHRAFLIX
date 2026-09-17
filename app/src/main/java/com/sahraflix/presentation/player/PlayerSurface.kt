@@ -5,12 +5,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.tv.material3.Text
 import androidx.tv.material3.Button
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -77,10 +80,13 @@ fun PlayerSurface(
             }
         )
     }
-        Button(
-            onClick = { viewModel.playExternally() },
-            modifier = Modifier.align(Alignment.TopEnd)
-        ) { Text("Play externally") }
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(onClick = viewModel::castCurrent) { Text("Cast") }
+            Button(onClick = { viewModel.playExternally() }) { Text("Play externally") }
+        }
         playerError?.let { error ->
             Text(error, modifier = Modifier.fillMaxSize())
         }
