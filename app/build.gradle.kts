@@ -49,6 +49,7 @@ android {
     lint {
         disable += "NullSafeMutableLiveData"
         disable += "FrequentlyChangingValue"
+        disable += "RememberInComposition"
     }
 
     kotlinOptions {

@@ -8,6 +8,8 @@ import androidx.paging.PagingData
 import androidx.paging.map
 import com.sahraflix.data.local.dao.EpgDao
 import com.sahraflix.data.local.dao.StreamDao
+import com.sahraflix.data.local.dao.PlaylistDao
+import com.sahraflix.data.local.entity.PlaylistEntity
 import com.sahraflix.domain.model.EpgProgram
 import com.sahraflix.domain.model.StreamItem
 import com.sahraflix.domain.model.StreamType
@@ -20,8 +22,10 @@ import javax.inject.Inject
 @HiltViewModel
 class EpgViewModel @Inject constructor(
     private val streamDao: StreamDao,
-    private val epgDao: EpgDao
+    private val epgDao: EpgDao,
+    private val playlistDao: PlaylistDao
 ) : ViewModel() {
+    val playlists: Flow<List<PlaylistEntity>> = playlistDao.observeAll()
     fun channels(playlistId: String): Flow<PagingData<StreamItem>> = Pager(
         config = PagingConfig(pageSize = 50, prefetchDistance = 15, enablePlaceholders = false),
         pagingSourceFactory = { streamDao.getLiveChannels(playlistId) }

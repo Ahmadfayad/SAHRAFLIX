@@ -55,10 +55,10 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun playStreamingContent(content: StreamingContent) {
+    fun playStreamingContent(content: StreamingContent, season: Int? = null, episode: Int? = null) {
         viewModelScope.launch {
             _isResolving.value = true
-            runCatching { streamingRepository.resolveStream(content) }
+            runCatching { streamingRepository.resolveStream(content, season, episode) }
                 .onSuccess { playStream(it.url) }
                 .onFailure { _playerError.value = it.message ?: "Unable to resolve stream" }
             _isResolving.value = false
