@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sahraflix</string>
+    <string name="home_live_tv">Live TV</string>
+    <string name="home_movies">Movies</string>
+    <string name="home_series">Series</string>
+    <string name="home_streaming_movies">Streaming Movies (TMDB)</string>
+    <string name="home_streaming_series">Streaming Series (TMDB)</string>
+    <string name="search_title">Search</string>
+    <string name="settings_title">Settings</string>
+    <string name="epg_title">EPG Guide</string>
+    <string name="playback_error">Unable to start playback</string>
+</resources>
