@@ -98,7 +98,9 @@ class M3uProviderImpl @Inject constructor(
                                     streamType = current.streamType,
                                     categoryId = categoryId,
                                     playlistId = playlistId,
-                                    epgChannelId = current.epgChannelId
+                                    epgChannelId = current.epgChannelId,
+                                    catchupType = current.catchupType,
+                                    catchupSource = current.catchupSource
                                 )
                             )
                         )
@@ -119,7 +121,9 @@ class M3uProviderImpl @Inject constructor(
                 line.attribute("tvg-shift")
             ),
             epgChannelId = line.attribute("tvg-id"),
-            streamType = detectStreamType(title, line)
+            streamType = detectStreamType(title, line),
+            catchupType = line.attribute("catchup"),
+            catchupSource = line.attribute("catchup-source")
         )
     }
 
@@ -173,7 +177,9 @@ class M3uProviderImpl @Inject constructor(
         val logoUrl: String?,
         val categoryName: String,
         val epgChannelId: String?,
-        val streamType: StreamType
+        val streamType: StreamType,
+        val catchupType: String?,
+        val catchupSource: String?
     )
 
     private data class M3uRecord(

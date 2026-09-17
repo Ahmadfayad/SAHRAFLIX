@@ -11,7 +11,7 @@ interface IptvVideoPlayer {
     val currentPosition: StateFlow<Long>
     val duration: StateFlow<Long>
 
-    fun playStream(url: String)
+    fun playStream(url: String, isLive: Boolean = false)
     fun loadExternalSubtitle(videoUrl: String, subtitleUri: Uri)
     fun getAvailableAudioTracks(): List<TrackInfo>
     fun getAvailableSubtitleTracks(): List<TrackInfo>

@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.sahraflix.data.local.entity.StreamItemEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface StreamDao {
@@ -24,6 +25,9 @@ interface StreamDao {
     @Query("SELECT id FROM stream_items WHERE playlistId = :playlistId AND epgChannelId = :channelId LIMIT 1")
     suspend fun findIdByEpgChannel(playlistId: String, channelId: String): String?
 
+    @Query("SELECT * FROM stream_items WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): StreamItemEntity?
+
     @Query("SELECT providerId FROM stream_items WHERE playlistId = :playlistId AND providerId IS NOT NULL ORDER BY providerId")
     fun getProviderIdsByPlaylist(playlistId: String): PagingSource<Int, String>
 
@@ -38,6 +42,12 @@ interface StreamDao {
 
     @Query("SELECT * FROM stream_items WHERE name LIKE '%' || :query || '%' ORDER BY name COLLATE NOCASE, id")
     fun searchStreams(query: String): PagingSource<Int, StreamItemEntity>
+
+    @Query("SELECT * FROM stream_items WHERE name LIKE '%' || :query || '%' ORDER BY name COLLATE NOCASE, id LIMIT 50")
+    suspend fun searchPreview(query: String): List<StreamItemEntity>
+
+    @Query("SELECT * FROM stream_items WHERE id IN (:ids) ORDER BY name COLLATE NOCASE, id")
+    fun observeByIds(ids: List<String>): Flow<List<StreamItemEntity>>
 
     @Query("DELETE FROM stream_items WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)

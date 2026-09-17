@@ -7,12 +7,15 @@ import com.sahraflix.data.local.MIGRATION_1_2
 import com.sahraflix.data.local.MIGRATION_2_3
 import com.sahraflix.data.local.MIGRATION_3_4
 import com.sahraflix.data.local.MIGRATION_4_5
+import com.sahraflix.data.local.MIGRATION_5_6
+import com.sahraflix.data.local.MIGRATION_6_7
 import com.sahraflix.data.local.dao.CategoryDao
 import com.sahraflix.data.local.dao.EpgDao
 import com.sahraflix.data.local.dao.PlaylistDao
 import com.sahraflix.data.local.dao.StreamDao
 import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.dao.StreamingItemDao
+import com.sahraflix.data.local.dao.dashboard.DashboardDao
 import com.sahraflix.data.repository.ProfileRepositoryImpl
 import com.sahraflix.data.repository.StreamRepositoryImpl
 import com.sahraflix.domain.repository.ProfileRepository
@@ -35,6 +38,8 @@ object DatabaseModule {
             .addMigrations(MIGRATION_2_3)
             .addMigrations(MIGRATION_3_4)
             .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_5_6)
+            .addMigrations(MIGRATION_6_7)
             .build()
 
     @Provides
@@ -54,6 +59,9 @@ object DatabaseModule {
 
     @Provides
     fun provideStreamingItemDao(database: IptvDatabase): StreamingItemDao = database.streamingItemDao()
+
+    @Provides
+    fun provideDashboardDao(database: IptvDatabase): DashboardDao = database.dashboardDao()
 
     @Provides
     fun provideStreamRepository(implementation: StreamRepositoryImpl): StreamRepository = implementation

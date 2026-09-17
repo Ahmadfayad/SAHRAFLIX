@@ -8,6 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.sahraflix.presentation.player.PlayerViewModel
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -18,11 +21,15 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 
 @Composable
-fun EpgGuideScreen(viewModel: EpgViewModel = hiltViewModel()) {
+fun EpgGuideScreen(
+    viewModel: EpgViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     val playlists by viewModel.playlists.collectAsState(initial = emptyList())
     val selected = playlists.firstOrNull()
     val channels = viewModel.channels(selected?.id.orEmpty()).collectAsLazyPagingItems()
     val now = remember { System.currentTimeMillis() }
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier.fillMaxSize().padding(40.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -40,7 +47,13 @@ fun EpgGuideScreen(viewModel: EpgViewModel = hiltViewModel()) {
                 viewModel = viewModel,
                 windowStart = now,
                 windowEnd = now + TimeUnit.HOURS.toMillis(6),
-                onProgramClick = { }
+                onProgramClick = { program ->
+                    scope.launch {
+                        viewModel.resolvePlaybackUrl(program)?.let { url ->
+                            playerViewModel.playStream(url, isLive = program.endTime > now)
+                        }
+                    }
+                }
             )
         }
     }

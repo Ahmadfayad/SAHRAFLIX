@@ -29,6 +29,9 @@ fun HomeScreen(
     val seriesStreams = viewModel.seriesStreams.collectAsLazyPagingItems()
     val streamingMovies by viewModel.streamingMovies.collectAsState()
     val streamingShows by viewModel.streamingShows.collectAsState()
+    val continueWatching by viewModel.continueWatching.collectAsState(initial = emptyList())
+    val favoriteLive by viewModel.favoriteLive.collectAsState(initial = emptyList())
+    val epgHighlights by viewModel.epgHighlights.collectAsState(initial = emptyList())
 
     LazyColumn(
         modifier = Modifier
@@ -37,6 +40,9 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item { DashboardRail("Continue Watching", continueWatching, playerViewModel) }
+        item { DashboardRail("Live TV: Favorites", favoriteLive, playerViewModel) }
+        item { DashboardRail("What's On Now", epgHighlights, playerViewModel) }
         item {
             Text("Live TV")
         }
@@ -106,6 +112,24 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DashboardRail(
+    title: String,
+    entries: List<com.sahraflix.domain.model.CatalogEntry>,
+    playerViewModel: PlayerViewModel
+) {
+    if (entries.isEmpty()) return
+    Text(title)
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp)
+    ) {
+        items(entries) { entry ->
+            StreamCard(entry, onClick = playerViewModel::playCatalogEntry)
         }
     }
 }

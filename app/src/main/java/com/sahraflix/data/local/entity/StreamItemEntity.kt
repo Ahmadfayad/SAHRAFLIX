@@ -41,5 +41,7 @@ data class StreamItemEntity(
     val categoryId: String,
     val playlistId: String,
     val epgChannelId: String? = null,
-    val providerId: String? = null
+    val providerId: String? = null,
+    val catchupType: String? = null,
+    val catchupSource: String? = null
 )

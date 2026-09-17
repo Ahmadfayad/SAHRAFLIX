@@ -37,10 +37,10 @@ class Media3PlayerImpl @Inject constructor(
     private val trackSelector = DefaultTrackSelector(context)
     private val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            500,
             15_000,
-            500,
-            500
+            30_000,
+            1_000,
+            5_000
         )
         .build()
     override val player: Player = ExoPlayer.Builder(context)
@@ -93,7 +93,10 @@ class Media3PlayerImpl @Inject constructor(
         }
     }
 
-    override fun playStream(url: String) {
+    override fun playStream(url: String, isLive: Boolean) {
+        // DefaultLoadControl is immutable after ExoPlayer construction in Media3 1.10.
+        // The player is constructed with the live-safe profile; VOD remains seekable and
+        // uses Media3's target-buffer logic rather than recreating the player per title.
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         player.play()

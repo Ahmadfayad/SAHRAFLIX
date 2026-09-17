@@ -1,10 +1,7 @@
 package com.sahraflix.data.repository
 
 import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
-import com.sahraflix.data.local.profilePreferences
+import com.sahraflix.data.local.secureProfilePreferences
 import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.entity.UserProfileEntity
 import com.sahraflix.data.security.PinSecurity
@@ -14,7 +11,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,14 +21,14 @@ class ProfileRepositoryImpl @Inject constructor(
     private val profileDao: UserProfileDao,
     private val pinSecurity: PinSecurity
 ) : ProfileRepository {
-    private val preferences = context.profilePreferences
+    private val preferences = context.secureProfilePreferences()
     private val _isUnlocked = MutableStateFlow(false)
 
     override val profiles: Flow<List<UserProfile>> = profileDao.observeAll().map { profiles ->
         profiles.map { it.toDomain() }
     }
 
-    override val selectedProfileId: Flow<Long?> = preferences.data.map { it[CURRENT_PROFILE_ID] }
+    override val selectedProfileId: Flow<Long?> = kotlinx.coroutines.flow.flow { emit(preferences.getLong(CURRENT_PROFILE_ID)) }
     override val isUnlocked: Flow<Boolean> = _isUnlocked.asStateFlow()
 
     override suspend fun createProfile(name: String, pin: String?): UserProfile {
@@ -44,7 +40,7 @@ class ProfileRepositoryImpl @Inject constructor(
         )
         val id = profileDao.insert(entity)
         if (cleanPin != null) saveVerifier(id, cleanPin)
-        preferences.edit { it[CURRENT_PROFILE_ID] = id }
+        preferences.putLong(CURRENT_PROFILE_ID, id)
         _isUnlocked.value = true
         return entity.copy(id = id).toDomain()
     }
@@ -53,12 +49,12 @@ class ProfileRepositoryImpl @Inject constructor(
         val profile = profileDao.getById(profileId) ?: return false
         if (profile.pinEnabled) {
             val suppliedPin = pin?.trim().orEmpty()
-            val expected = preferences.data.first()[verifierKey(profileId)] ?: return false
+            val expected = preferences.getString(verifierKey(profileId)) ?: return false
             if (suppliedPin.length !in MIN_PIN_LENGTH..MAX_PIN_LENGTH ||
                 !pinSecurity.matches(profileId, suppliedPin, expected)
             ) return false
         }
-        preferences.edit { it[CURRENT_PROFILE_ID] = profileId }
+        preferences.putLong(CURRENT_PROFILE_ID, profileId)
         _isUnlocked.value = true
         return true
     }
@@ -71,7 +67,7 @@ class ProfileRepositoryImpl @Inject constructor(
         val profile = profileDao.getById(profileId) ?: return
         val cleanPin = pin?.trim()?.takeIf { it.isNotEmpty() }
         if (cleanPin == null) {
-            preferences.edit { it.remove(verifierKey(profileId)) }
+            preferences.remove(verifierKey(profileId))
         } else {
             require(cleanPin.length in MIN_PIN_LENGTH..MAX_PIN_LENGTH)
             saveVerifier(profileId, cleanPin)
@@ -80,10 +76,10 @@ class ProfileRepositoryImpl @Inject constructor(
     }
 
     private suspend fun saveVerifier(profileId: Long, pin: String) {
-        preferences.edit { it[verifierKey(profileId)] = pinSecurity.verifier(profileId, pin) }
+        preferences.putString(verifierKey(profileId), pinSecurity.verifier(profileId, pin))
     }
 
-    private fun verifierKey(profileId: Long) = stringPreferencesKey("pin_verifier_$profileId")
+    private fun verifierKey(profileId: Long) = "pin_verifier_$profileId"
 
     private fun UserProfileEntity.toDomain() = UserProfile(
         id = id,
@@ -94,7 +90,7 @@ class ProfileRepositoryImpl @Inject constructor(
     )
 
     private companion object {
-        val CURRENT_PROFILE_ID = longPreferencesKey("current_profile_id")
+        const val CURRENT_PROFILE_ID = "current_profile_id"
         const val MIN_PIN_LENGTH = 4
         const val MAX_PIN_LENGTH = 8
     }

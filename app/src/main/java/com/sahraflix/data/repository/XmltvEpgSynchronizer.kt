@@ -44,6 +44,7 @@ class XmltvEpgSynchronizer @Inject constructor(
             }
             if (batch.isNotEmpty()) epgDao.insertEvents(batch)
         }
+        epgDao.deletePastEvents(System.currentTimeMillis() - 86_400_000L)
     }
 
     private fun openInput(source: String): InputStream {

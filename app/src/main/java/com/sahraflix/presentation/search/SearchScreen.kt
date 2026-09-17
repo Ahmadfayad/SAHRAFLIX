@@ -31,6 +31,7 @@ fun SearchScreen(
 ) {
     val query by viewModel.query.collectAsState()
     val results = viewModel.results.collectAsLazyPagingItems()
+    val grouped by viewModel.groupedResults.collectAsState()
     Column(
         modifier = Modifier.fillMaxSize().padding(40.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -39,6 +40,9 @@ fun SearchScreen(
         if (detailId == null) {
             BasicTextField(value = query, onValueChange = viewModel::setQuery, singleLine = true)
             Text(if (query.isBlank()) "Search live TV, movies, and series" else "Results")
+            SearchGroup("Live Now", grouped.liveNow, playerViewModel)
+            SearchGroup("Channels", grouped.channels, playerViewModel)
+            SearchGroup("Movies/Series", grouped.moviesAndSeries, playerViewModel)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -54,5 +58,18 @@ fun SearchScreen(
         } else {
             Text("Catalog entry: $detailId")
         }
+    }
+}
+
+@Composable
+private fun SearchGroup(
+    title: String,
+    entries: List<com.sahraflix.domain.model.CatalogEntry>,
+    playerViewModel: PlayerViewModel
+) {
+    if (entries.isEmpty()) return
+    Text(title)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        items(entries) { entry -> StreamCard(entry, onClick = playerViewModel::playCatalogEntry) }
     }
 }

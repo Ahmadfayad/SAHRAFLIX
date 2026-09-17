@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import androidx.paging.cachedIn
 import javax.inject.Inject
+import com.sahraflix.data.repository.CatchupUrlFormatter
 
 @HiltViewModel
 class EpgViewModel @Inject constructor(
@@ -56,4 +57,10 @@ class EpgViewModel @Inject constructor(
                 )
             }
         }
+
+    suspend fun resolvePlaybackUrl(program: EpgProgram): String? {
+        val stream = streamDao.getById(program.streamId) ?: return null
+        return CatchupUrlFormatter.format(stream, program.startTime, program.endTime)
+            ?: stream.streamUrl
+    }
 }

@@ -32,3 +32,17 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_streaming_items_tmdbId ON streaming_items(tmdbId)")
     }
 }
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("CREATE TABLE IF NOT EXISTS favorites (streamId TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY(streamId))")
+        database.execSQL("CREATE TABLE IF NOT EXISTS watch_progress (contentId TEXT NOT NULL, title TEXT NOT NULL, posterUrl TEXT, streamUrl TEXT NOT NULL, positionMs INTEGER NOT NULL, durationMs INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(contentId))")
+    }
+}
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE stream_items ADD COLUMN catchupType TEXT")
+        database.execSQL("ALTER TABLE stream_items ADD COLUMN catchupSource TEXT")
+    }
+}

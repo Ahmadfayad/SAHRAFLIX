@@ -2,6 +2,7 @@ package com.sahraflix.presentation.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Card
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.sahraflix.domain.model.CatalogEntry
 import com.sahraflix.domain.model.ContentSource
 
@@ -69,11 +70,21 @@ fun StreamCard(
             .focusable()
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = stream.posterUrl,
                 contentDescription = stream.title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                loading = {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxSize().background(Color(0xFF252A31))
+                    )
+                },
+                error = {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxSize().background(Color(0xFF1B2027))
+                    )
+                }
             )
             SourceBadge(source, modifier = Modifier.padding(6.dp))
         }
