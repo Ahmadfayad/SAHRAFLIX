@@ -10,12 +10,6 @@ import com.sahraflix.domain.model.StreamType
     tableName = "stream_items",
     foreignKeys = [
         ForeignKey(
-            entity = CategoryEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["categoryId"],
-            onDelete = ForeignKey.CASCADE
-        ),
-        ForeignKey(
             entity = PlaylistEntity::class,
             parentColumns = ["id"],
             childColumns = ["playlistId"],
@@ -23,13 +17,13 @@ import com.sahraflix.domain.model.StreamType
         )
     ],
     indices = [
-        Index(value = ["categoryId"]),
-        Index(value = ["playlistId"]),
-        Index(value = ["categoryId", "streamType", "name"]),
+        Index(value = ["categoryId", "streamType", "sortOrder"]),
         Index(value = ["playlistId", "streamType"]),
+        Index(value = ["streamType", "sortOrder"]),
         Index(value = ["name"]),
         Index(value = ["playlistId", "epgChannelId"]),
-        Index(value = ["playlistId", "providerId"])
+        Index(value = ["playlistId", "providerId"]),
+        Index(value = ["playlistId", "syncStamp"])
     ]
 )
 data class StreamItemEntity(
@@ -43,5 +37,11 @@ data class StreamItemEntity(
     val epgChannelId: String? = null,
     val providerId: String? = null,
     val catchupType: String? = null,
-    val catchupSource: String? = null
+    val catchupSource: String? = null,
+    val userAgent: String? = null,
+    val referrer: String? = null,
+    /** Provider order (channel number). */
+    val sortOrder: Int = 0,
+    /** Sync generation; rows whose stamp is older than the last successful sync are removed. */
+    val syncStamp: Long = 0
 )

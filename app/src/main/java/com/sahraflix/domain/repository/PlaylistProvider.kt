@@ -1,9 +1,12 @@
 package com.sahraflix.domain.repository
 
+import com.sahraflix.data.local.entity.PlaylistEntity
+import com.sahraflix.data.repository.SyncWriter
+
 interface PlaylistProvider {
-    suspend fun syncCategories(playlistId: String)
+    /** Fetches all categories and streams, writing them through [writer]. Throws on failure. */
+    suspend fun sync(playlist: PlaylistEntity, writer: SyncWriter)
 
-    suspend fun syncStreams(playlistId: String)
-
-    suspend fun syncEpg(playlistId: String)
+    /** Optional EPG URL the provider knows about (e.g. Xtream xmltv.php). */
+    fun defaultEpgUrl(playlist: PlaylistEntity): String? = null
 }

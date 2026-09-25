@@ -16,14 +16,13 @@ import com.sahraflix.domain.model.StreamType
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [
-        Index(value = ["playlistId"]),
-        Index(value = ["playlistId", "streamType"])
-    ]
+    indices = [Index(value = ["playlistId"]), Index(value = ["playlistId", "streamType"])]
 )
 data class CategoryEntity(
     @PrimaryKey val id: String,
     val name: String,
     val playlistId: String,
-    val streamType: StreamType
+    val streamType: StreamType,
+    val sortOrder: Int = 0,
+    val syncStamp: Long = 0
 )

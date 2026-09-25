@@ -1,59 +1,80 @@
 package com.sahraflix.data.remote
 
+import com.sahraflix.core.AppConfig
 import com.sahraflix.domain.model.TmdbCastMember
-import com.sahraflix.domain.model.TmdbCrewMember
-import com.sahraflix.domain.model.TmdbEpisode
-import com.sahraflix.domain.model.TmdbMovie
 import com.sahraflix.domain.model.TmdbSeason
-import com.sahraflix.domain.model.TmdbTvShow
+import com.sahraflix.domain.model.WatchProvider
+import com.sahraflix.domain.model.WatchProviders
 import kotlinx.coroutines.delay
-import javax.inject.Inject
+import retrofit2.Response
+import java.io.IOException
+import java.util.Locale
 
-class TmdbClient @Inject constructor(
-    private val api: TmdbApi,
-    private val apiKey: String
-) {
-    suspend fun discoverMovies(page: Int): TmdbPageDto<TmdbMovieDto> =
-        request { api.discoverMovies(page, requireApiKey()) }
+class TmdbNotConfiguredException : IllegalStateException(
+    "TMDB is not configured. Add TMDB_API_KEY to local.properties to enable movie & series discovery."
+)
 
-    suspend fun discoverTv(page: Int): TmdbPageDto<TmdbTvDto> =
-        request { api.discoverTv(page, requireApiKey()) }
+class TmdbClient(private val api: TmdbApi, val isConfigured: Boolean) {
 
-    suspend fun movie(id: Int): TmdbMovie = request { api.movie(id, "credits", requireApiKey()) }.let { it.toDomain() }
-    suspend fun tv(id: Int): TmdbTvShow = request { api.tv(id, "credits", requireApiKey()) }.let { it.toDomain() }
-    suspend fun season(id: Int, number: Int): TmdbSeason = request { api.season(id, number, requireApiKey()) }.toDomain()
-    suspend fun episode(id: Int, season: Int, episode: Int): TmdbEpisode = request { api.episode(id, season, episode, requireApiKey()) }.toDomain()
+    private val language: String get() = Locale.getDefault().toLanguageTag()
+    val region: String get() = Locale.getDefault().country.ifBlank { "US" }
 
-    suspend fun search(query: String, page: Int = 1): TmdbPageDto<TmdbSearchDto> =
-        request { api.searchMulti(query, page, requireApiKey()) }
+    suspend fun trendingMovies(page: Int) = request { api.trendingMovies(page, language) }
+    suspend fun trendingTv(page: Int) = request { api.trendingTv(page, language) }
+    suspend fun search(query: String) = request { api.searchMulti(query, 1, language) }
+    suspend fun movie(id: Int) = request { api.movie(id, language) }
+    suspend fun tv(id: Int) = request { api.tv(id, language) }
 
-    private fun requireApiKey(): String = apiKey.trim().takeIf { it.isNotEmpty() }
-        ?: error("TMDB API key is not configured")
+    fun trailerKey(videos: TmdbVideosDto?): String? = videos?.results
+        ?.filter { it.site.equals("YouTube", true) }
+        ?.sortedWith(compareByDescending<TmdbVideoDto> { it.type == "Trailer" }.thenByDescending { it.official })
+        ?.firstOrNull()?.key
 
-    private suspend fun <T> request(call: suspend () -> retrofit2.Response<T>): T {
+    fun providers(dto: TmdbWatchProvidersDto?): WatchProviders? {
+        val r = dto?.results?.get(region) ?: return null
+        fun List<TmdbProviderDto>.map() = map { WatchProvider(it.provider_id, it.provider_name, image(it.logo_path, AppConfig.TMDB_IMAGE_LOGO)) }
+        return WatchProviders(
+            region = region,
+            link = r.link,
+            stream = (r.flatrate + r.free + r.ads).distinctBy { it.provider_id }.map(),
+            rent = r.rent.map(),
+            buy = r.buy.map()
+        )
+    }
+
+    fun cast(dto: TmdbCreditsDto?): List<TmdbCastMember> = dto?.cast.orEmpty().take(15).map {
+        TmdbCastMember(it.id, it.name, it.character, image(it.profile_path, AppConfig.TMDB_IMAGE_POSTER))
+    }
+
+    fun seasons(list: List<TmdbSeasonDto>): List<TmdbSeason> = list.filter { it.season_number > 0 }.map {
+        TmdbSeason(it.id, it.season_number, it.name.orEmpty(), it.overview, image(it.poster_path, AppConfig.TMDB_IMAGE_POSTER), it.episode_count)
+    }
+
+    fun image(path: String?, base: String = AppConfig.TMDB_IMAGE_POSTER): String? =
+        path?.takeIf { it.isNotBlank() }?.let { base + it }
+
+    fun year(date: String?): Int? = date?.take(4)?.toIntOrNull()
+
+    /** Retries 429 (rate-limit) and 5xx / network errors with exponential backoff. */
+    private suspend fun <T> request(call: suspend () -> Response<T>): T {
+        if (!isConfigured) throw TmdbNotConfiguredException()
+        var backoff = 500L
+        var lastError: Exception? = null
         repeat(MAX_ATTEMPTS) { attempt ->
-            val response = call()
-            if (response.isSuccessful) return response.body() ?: error("TMDB returned an empty response")
-            if (response.code() != 429 || attempt == MAX_ATTEMPTS - 1) {
-                error("TMDB request failed: ${response.code()}")
+            try {
+                val response = call()
+                if (response.isSuccessful) return response.body() ?: throw IOException("TMDB returned an empty body")
+                if (response.code() == 401) throw IllegalStateException("TMDB rejected the API key (401)")
+                if (response.code() == 404) throw NoSuchElementException("Not found on TMDB")
+                if (response.code() != 429 && response.code() < 500) throw IOException("TMDB error ${response.code()}")
+                lastError = IOException("TMDB error ${response.code()}")
+            } catch (e: IOException) {
+                lastError = e
             }
-            delay((attempt + 1) * RETRY_DELAY_MS)
+            if (attempt < MAX_ATTEMPTS - 1) { delay(backoff); backoff *= 2 }
         }
-        error("TMDB request exhausted retries")
+        throw lastError ?: IOException("TMDB request failed")
     }
 
-    private fun image(path: String?): String? = path?.let { IMAGE_BASE_URL + it }
-    private fun year(date: String?): Int? = date?.take(4)?.toIntOrNull()
-
-    private fun TmdbMovieDto.toDomain() = TmdbMovie(id, title.orEmpty(), overview, image(poster_path), image(backdrop_path), year(release_date), vote_average, runtime, genres.map { it.name }, credits?.cast.orEmpty().map { TmdbCastMember(it.id, it.name, it.character, image(it.profile_path)) }, credits?.crew.orEmpty().map { TmdbCrewMember(it.id, it.name, it.department, it.job, image(it.profile_path)) })
-    private fun TmdbTvDto.toDomain() = TmdbTvShow(id, name.orEmpty(), overview, image(poster_path), image(backdrop_path), year(first_air_date), vote_average, genres.map { it.name }, seasons.map { it.toSummary() }, credits?.cast.orEmpty().map { TmdbCastMember(it.id, it.name, it.character, image(it.profile_path)) }, credits?.crew.orEmpty().map { TmdbCrewMember(it.id, it.name, it.department, it.job, image(it.profile_path)) })
-    private fun TmdbSeasonDto.toDomain() = TmdbSeason(id, season_number, name.orEmpty(), overview, image(poster_path), episode_count, episodes.map { it.toDomain() })
-    private fun TmdbSeasonDto.toSummary() = TmdbSeason(id, season_number, name.orEmpty(), overview, image(poster_path), episode_count)
-    private fun TmdbEpisodeDto.toDomain() = TmdbEpisode(id, episode_number, season_number, name.orEmpty(), overview, image(still_path), air_date, vote_average)
-
-    private companion object {
-        const val IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w780"
-        const val MAX_ATTEMPTS = 3
-        const val RETRY_DELAY_MS = 500L
-    }
+    private companion object { const val MAX_ATTEMPTS = 3 }
 }

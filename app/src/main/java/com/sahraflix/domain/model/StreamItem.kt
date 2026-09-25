@@ -8,7 +8,9 @@ data class StreamItem(
     val streamType: StreamType,
     val categoryId: String,
     val playlistId: String,
-    val previewUrl: String? = null,
+    /** Provider-side id (Xtream stream/series id, Stalker channel id). */
+    val providerId: String? = null,
     val catchupType: String? = null,
-    val catchupSource: String? = null
+    val catchupSource: String? = null,
+    val epgChannelId: String? = null
 )

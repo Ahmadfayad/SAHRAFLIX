@@ -4,6 +4,8 @@ enum class ContentSource {
     IPTV_XTREAM,
     IPTV_M3U,
     IPTV_STALKER,
-    IPTV_MAC,
-    VIDSRC_TMDB
+    /** Metadata-only catalogue from TMDB. Playback comes from the user's own library or a licensed service. */
+    TMDB;
+
+    val isIptv: Boolean get() = this != TMDB
 }

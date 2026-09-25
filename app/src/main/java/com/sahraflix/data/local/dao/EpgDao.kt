@@ -1,32 +1,53 @@
 package com.sahraflix.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.sahraflix.data.local.entity.EpgEventEntity
+import androidx.room.Upsert
+import com.sahraflix.data.local.entity.EpgProgrammeEntity
 import kotlinx.coroutines.flow.Flow
+
+/** A programme joined to the stream that shows it. */
+data class NowPlayingRow(
+    val streamId: String,
+    val streamName: String,
+    val logoUrl: String?,
+    val title: String,
+    val startTime: Long,
+    val endTime: Long
+)
 
 @Dao
 interface EpgDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEvents(events: List<EpgEventEntity>)
+    @Upsert
+    suspend fun upsert(programmes: List<EpgProgrammeEntity>)
 
-    @Query("SELECT * FROM epg_events WHERE streamId = :streamId AND endTime >= :currentTime ORDER BY startTime ASC")
-    fun getEpgForStream(streamId: String, currentTime: Long): Flow<List<EpgEventEntity>>
+    @Query(
+        "SELECT * FROM epg_programmes WHERE playlistId = :playlistId AND channelId = :channelId " +
+            "AND endTime >= :fromTime AND startTime <= :toTime ORDER BY startTime"
+    )
+    fun window(playlistId: String, channelId: String, fromTime: Long, toTime: Long): Flow<List<EpgProgrammeEntity>>
 
-    @Query("SELECT * FROM epg_events WHERE streamId = :streamId AND endTime >= :fromTime AND startTime <= :toTime ORDER BY startTime ASC")
-    fun getEpgWindow(streamId: String, fromTime: Long, toTime: Long): Flow<List<EpgEventEntity>>
+    @Query(
+        "SELECT s.id AS streamId, s.name AS streamName, s.logoUrl AS logoUrl, p.title AS title, " +
+            "p.startTime AS startTime, p.endTime AS endTime FROM epg_programmes p " +
+            "JOIN stream_items s ON s.playlistId = p.playlistId AND s.epgChannelId = p.channelId " +
+            "WHERE p.startTime <= :now AND p.endTime > :now AND s.streamType = 'LIVE' " +
+            "GROUP BY s.id ORDER BY s.sortOrder LIMIT :limit"
+    )
+    fun observeNowPlaying(now: Long, limit: Int): Flow<List<NowPlayingRow>>
 
-    @Query("DELETE FROM epg_events WHERE streamId = :streamId")
-    suspend fun deleteForStream(streamId: String)
+    @Query(
+        "SELECT s.id AS streamId, s.name AS streamName, s.logoUrl AS logoUrl, p.title AS title, " +
+            "p.startTime AS startTime, p.endTime AS endTime FROM epg_programmes p " +
+            "JOIN stream_items s ON s.playlistId = p.playlistId AND s.epgChannelId = p.channelId " +
+            "WHERE p.title LIKE '%' || :query || '%' AND p.endTime > :now " +
+            "GROUP BY s.id, p.startTime ORDER BY p.startTime LIMIT 40"
+    )
+    suspend fun search(query: String, now: Long): List<NowPlayingRow>
 
-    @Query("DELETE FROM epg_events WHERE endTime < :cutoff")
-    suspend fun deletePastEvents(cutoff: Long)
+    @Query("DELETE FROM epg_programmes WHERE endTime < :cutoff")
+    suspend fun deleteBefore(cutoff: Long)
 
-    @Query("SELECT * FROM epg_events WHERE startTime <= :now AND endTime >= :now ORDER BY startTime ASC LIMIT 50")
-    fun observeCurrentEvents(now: Long): Flow<List<EpgEventEntity>>
-
-    @Query("SELECT * FROM epg_events WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' ORDER BY startTime ASC LIMIT 50")
-    suspend fun searchEvents(query: String): List<EpgEventEntity>
+    @Query("DELETE FROM epg_programmes WHERE playlistId = :playlistId")
+    suspend fun deleteForPlaylist(playlistId: String)
 }

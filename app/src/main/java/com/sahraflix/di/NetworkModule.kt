@@ -1,79 +1,90 @@
 package com.sahraflix.di
 
+import com.sahraflix.BuildConfig
+import com.sahraflix.core.AppConfig
+import com.sahraflix.data.remote.TmdbApi
+import com.sahraflix.data.remote.TmdbClient
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import okhttp3.OkHttpClient
-import okhttp3.dnsoverhttps.DnsOverHttps
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.JavaNetCookieJar
-import java.net.CookieManager
-import java.net.CookiePolicy
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import com.sahraflix.data.remote.TmdbApi
-import com.sahraflix.data.remote.TmdbClient
-import com.sahraflix.data.repository.TmdbVidsrcProvider
-import com.sahraflix.domain.repository.tmdb.TmdbCatalogProvider
-import com.sahraflix.data.repository.TmdbContentRepository
-import com.sahraflix.domain.repository.ContentRepository
-import com.sahraflix.data.local.dao.StreamingItemDao
-import com.sahraflix.data.repository.UnifiedContentRepository
-import com.sahraflix.BuildConfig
+import java.net.CookieManager
+import java.net.CookiePolicy
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    /**
+     * Moshi must have KotlinJsonAdapterFactory: without it Moshi 1.15 refuses to (de)serialise Kotlin
+     * classes, which made every TMDB call throw in the previous build.
+     */
+    @Provides
+    @Singleton
+    fun provideMoshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
-        val cookieManager = CookieManager(null, CookiePolicy.ACCEPT_ALL)
-        val cookieJar = JavaNetCookieJar(cookieManager)
-        val bootstrap = OkHttpClient.Builder().cookieJar(cookieJar).build()
-        val doh = DnsOverHttps.Builder()
-            .client(bootstrap)
-            .url("https://dns.google/dns-query".toHttpUrl())
-            .build()
+        val cookies = JavaNetCookieJar(CookieManager(null, CookiePolicy.ACCEPT_ALL))
         return OkHttpClient.Builder()
-        .dns(doh)
-        .cookieJar(cookieJar)
-        .addInterceptor { chain ->
-            chain.proceed(
-                chain.request().newBuilder()
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .build()
-            )
-        }
-        .build()
+            // System DNS on purpose: forced DoH broke LAN/self-hosted IPTV servers and local hostnames.
+            .cookieJar(cookies)
+            .connectTimeout(AppConfig.CONNECT_TIMEOUT_S, TimeUnit.SECONDS)
+            .readTimeout(AppConfig.READ_TIMEOUT_S, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true) // http→https redirects are common on IPTV panels
+            .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                if (request.header("User-Agent") != null) chain.proceed(request)
+                else chain.proceed(request.newBuilder().header("User-Agent", AppConfig.DEFAULT_USER_AGENT).build())
+            }
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    // HEADERS only: BODY would buffer entire multi-MB playlists into memory.
+                    addInterceptor(HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.HEADERS
+                        redactHeader("Authorization")
+                        redactHeader("Cookie")
+                    })
+                }
+            }
+            .build()
     }
 
     @Provides
     @Singleton
-    fun provideTmdbApi(client: OkHttpClient): TmdbApi = Retrofit.Builder()
-        .baseUrl("https://api.themoviedb.org/3/")
-        .client(client)
-        .addConverterFactory(MoshiConverterFactory.create())
-        .build()
-        .create(TmdbApi::class.java)
-
-    @Provides
-    fun provideTmdbClient(api: TmdbApi): TmdbClient = TmdbClient(api, BuildConfig.TMDB_API_KEY)
+    fun provideTmdbApi(client: OkHttpClient, moshi: Moshi): TmdbApi {
+        val key = BuildConfig.TMDB_API_KEY.trim()
+        // Accept either a v3 API key or a v4 "API Read Access Token" (JWT, sent as Bearer).
+        val tmdbClient = client.newBuilder().addInterceptor { chain ->
+            val req = chain.request()
+            val authed = when {
+                key.isEmpty() -> req
+                key.startsWith("eyJ") -> req.newBuilder().header("Authorization", "Bearer $key").build()
+                else -> req.newBuilder().url(req.url.newBuilder().addQueryParameter("api_key", key).build()).build()
+            }
+            chain.proceed(authed)
+        }.build()
+        return Retrofit.Builder()
+            .baseUrl("https://api.themoviedb.org/3/")
+            .client(tmdbClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(TmdbApi::class.java)
+    }
 
     @Provides
     @Singleton
-    fun provideTmdbCatalogProvider(provider: TmdbVidsrcProvider): TmdbCatalogProvider = provider
-
-    @Provides
-    @Singleton
-    fun provideTmdbContentRepository(
-        streamingDao: StreamingItemDao,
-        tmdbClient: TmdbClient,
-        vidSrcResolver: com.sahraflix.data.remote.VidSrcResolver
-    ): TmdbContentRepository = TmdbContentRepository(streamingDao, tmdbClient, vidSrcResolver)
-
-    @Provides
-    @Singleton
-    fun provideContentRepository(repository: UnifiedContentRepository): ContentRepository = repository
+    fun provideTmdbClient(api: TmdbApi): TmdbClient = TmdbClient(api, BuildConfig.TMDB_API_KEY.isNotBlank())
 }

@@ -7,3 +7,6 @@
 .cxx/
 local.properties
 app/build/
+.kotlin/
+*.apk
+tools/test-server/__pycache__/

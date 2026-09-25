@@ -1,28 +1,65 @@
 package com.sahraflix.domain.model
 
 sealed interface ContentDetails {
-    val entry: CatalogEntry
+    val title: String
     val description: String?
-    val rating: Double?
-    val releaseYear: Int?
+    val posterUrl: String?
+    val backdropUrl: String?
 
+    /** An IPTV item; series carry their episode list (Xtream get_series_info). */
     data class Iptv(
-        override val entry: CatalogEntry.Iptv,
+        val entry: CatalogEntry.Iptv,
         override val description: String? = null,
-        override val rating: Double? = null,
-        override val releaseYear: Int? = null
-    ) : ContentDetails
+        override val backdropUrl: String? = null,
+        val seasons: Map<Int, List<IptvEpisode>> = emptyMap(),
+        val rating: Double? = null,
+        val releaseYear: Int? = null
+    ) : ContentDetails {
+        override val title: String get() = entry.title
+        override val posterUrl: String? get() = entry.posterUrl
+    }
 
-    data class Streaming(
-        override val entry: CatalogEntry.Streaming,
+    data class Tmdb(
+        val entry: CatalogEntry.Tmdb,
         override val description: String?,
-        override val rating: Double?,
-        override val releaseYear: Int?,
-        val backdropUrl: String?,
+        override val backdropUrl: String?,
+        val rating: Double?,
+        val releaseYear: Int?,
+        val runtimeMinutes: Int?,
         val genres: List<String>,
         val cast: List<TmdbCastMember>,
-        val crew: List<TmdbCrewMember>,
-        val seasons: List<SeasonSummary>,
-        val episodes: Map<Int, List<EpisodeInfo>> = emptyMap()
-    ) : ContentDetails
+        val seasons: List<TmdbSeason>,
+        /** Legal availability for the user's region (TMDB watch/providers, data by JustWatch). */
+        val watchProviders: WatchProviders?,
+        /** YouTube key of the official trailer, if any. */
+        val trailerYoutubeKey: String?,
+        /** Matching titles found in the user's own IPTV VOD library. */
+        val libraryMatches: List<CatalogEntry.Iptv>
+    ) : ContentDetails {
+        override val title: String get() = entry.title
+        override val posterUrl: String? get() = entry.posterUrl
+    }
 }
+
+data class IptvEpisode(
+    val id: String,
+    val season: Int,
+    val episode: Int,
+    val title: String,
+    val streamUrl: String,
+    val plot: String? = null,
+    val imageUrl: String? = null,
+    val durationSecs: Int? = null
+)
+
+data class WatchProviders(
+    val region: String,
+    val link: String?,
+    val stream: List<WatchProvider>,
+    val rent: List<WatchProvider>,
+    val buy: List<WatchProvider>
+) {
+    val isEmpty: Boolean get() = stream.isEmpty() && rent.isEmpty() && buy.isEmpty()
+}
+
+data class WatchProvider(val id: Int, val name: String, val logoUrl: String?)
