@@ -1,75 +1,57 @@
 package com.sahraflix.presentation.search
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.sahraflix.presentation.components.StreamCard
-import com.sahraflix.presentation.player.PlayerViewModel
+import com.sahraflix.domain.model.CatalogEntry
+import com.sahraflix.domain.model.StreamType
+import com.sahraflix.presentation.components.EntryRail
+import com.sahraflix.presentation.player.LocalPlayerViewModel
 
 @Composable
-fun SearchScreen(
-    detailId: String? = null,
-    onOpenDetail: (String) -> Unit = {},
-    viewModel: SearchViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
-) {
+fun SearchScreen(onOpenDetail: (CatalogEntry) -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
+    val player = LocalPlayerViewModel.current
     val query by viewModel.query.collectAsState()
-    val results = viewModel.results.collectAsLazyPagingItems()
-    val grouped by viewModel.groupedResults.collectAsState()
-    Column(
-        modifier = Modifier.fillMaxSize().padding(40.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(if (detailId == null) "Search" else "Details")
-        if (detailId == null) {
-            BasicTextField(value = query, onValueChange = viewModel::setQuery, singleLine = true)
-            Text(if (query.isBlank()) "Search live TV, movies, and series" else "Results")
-            SearchGroup("Live Now", grouped.liveNow, playerViewModel)
-            SearchGroup("Channels", grouped.channels, playerViewModel)
-            SearchGroup("Movies/Series", grouped.moviesAndSeries, playerViewModel)
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(results.itemCount) { index ->
-                    results[index]?.let { entry ->
-                        StreamCard(entry, onClick = {
-                            onOpenDetail(it.id.removePrefix("streaming:"))
-                        })
-                    }
-                }
-            }
-        } else {
-            Text("Catalog entry: $detailId")
+    val results by viewModel.results.collectAsState()
+    val open: (CatalogEntry) -> Unit = { e ->
+        when (e) {
+            is CatalogEntry.Iptv -> if (e.stream.streamType == StreamType.SERIES) onOpenDetail(e) else player.play(e)
+            is CatalogEntry.Tmdb -> onOpenDetail(e)
         }
     }
-}
-
-@Composable
-private fun SearchGroup(
-    title: String,
-    entries: List<com.sahraflix.domain.model.CatalogEntry>,
-    playerViewModel: PlayerViewModel
-) {
-    if (entries.isEmpty()) return
-    Text(title)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        items(entries) { entry -> StreamCard(entry, onClick = playerViewModel::playCatalogEntry) }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(36.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = viewModel::setQuery,
+                singleLine = true,
+                label = { androidx.compose.material3.Text("Search channels, movies, series, programmes") },
+                modifier = Modifier.widthIn(min = 420.dp, max = 720.dp)
+            )
+        }
+        val empty = results.channels.isEmpty() && results.vod.isEmpty() && results.programmes.isEmpty() && results.tmdb.isEmpty()
+        if (query.trim().length >= 2 && empty) item { Text("No results for \"$query\"", style = MaterialTheme.typography.bodyLarge) }
+        item { EntryRail("Channels", results.channels, open, onLongClick = { player.toggleFavorite(it) }) }
+        item { EntryRail("Movies & series in your playlists", results.vod, open) }
+        item {
+            EntryRail("In the TV guide", results.programmes.map { it.first }.distinctBy { it.id }, open,
+                subtitle = { e -> results.programmes.firstOrNull { it.first.id == e.id }?.second })
+        }
+        item { EntryRail("More titles (TMDB)", results.tmdb, open) }
     }
 }

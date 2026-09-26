@@ -12,52 +12,50 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.Button
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 
 @Composable
-fun PairingScreen(viewModel: PairingViewModel = hiltViewModel()) {
+fun PairingScreen(onDone: () -> Unit, viewModel: PairingViewModel = hiltViewModel()) {
     val source by viewModel.source.collectAsState()
     val pin by viewModel.pin.collectAsState()
     val url by viewModel.serverUrl.collectAsState()
-    val paired by viewModel.paired.collectAsState()
-    var secondsRemaining by remember(source) { mutableIntStateOf(5 * 60) }
-    val currentSource by rememberUpdatedState(source)
+    val status by viewModel.status.collectAsState()
     val qr = remember(url) { if (url.isBlank()) null else viewModel.qrBitmap(360) }
 
     LaunchedEffect(Unit) { viewModel.start() }
-    LaunchedEffect(source) {
-        secondsRemaining = 5 * 60
-        while (secondsRemaining > 0) {
-            kotlinx.coroutines.delay(1_000)
-            secondsRemaining--
-        }
-        viewModel.selectSource(currentSource)
-    }
-    Column(
-        modifier = Modifier.fillMaxSize().padding(40.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Text("Add playlist")
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PairingSource.values().forEach { item ->
-                Button(onClick = { viewModel.selectSource(item) }) {
-                    Text(if (item == source) "[ ${item.name} ]" else item.name)
+
+    Row(Modifier.fillMaxSize().padding(40.dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Pair from your phone", style = MaterialTheme.typography.headlineLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PairingSource.entries.forEach { item ->
+                    if (item == source) Button(onClick = {}) { Text(item.name) }
+                    else OutlinedButton(onClick = { viewModel.selectSource(item) }) { Text(item.name) }
                 }
             }
+            Text("1. Connect your phone to the same Wi-Fi network as this TV.", style = MaterialTheme.typography.bodyLarge)
+            Text("2. Scan the QR code, or open:", style = MaterialTheme.typography.bodyLarge)
+            Text(url, style = MaterialTheme.typography.titleMedium)
+            Text("3. Enter this PIN on your phone:", style = MaterialTheme.typography.bodyLarge)
+            Text(pin, style = MaterialTheme.typography.displaySmall)
+            Text("The PIN is single-use and changes after 5 wrong attempts.", style = MaterialTheme.typography.bodySmall)
+            when (val s = status) {
+                PairingStatus.Waiting -> Text("Waiting for your phone…")
+                PairingStatus.Saving -> Text("Checking your login…")
+                is PairingStatus.Done -> {
+                    Text("Added \"${s.name}\". Channels are downloading in the background.", style = MaterialTheme.typography.titleMedium)
+                    Button(onClick = onDone) { Text("Go to Home") }
+                }
+                is PairingStatus.Failed -> Text("Couldn't add it: ${s.message}", style = MaterialTheme.typography.titleMedium)
+            }
         }
-        Text("Open this page on your phone")
-        Text(url)
-        Text("TV PIN: $pin")
-        Text("Expires in ${secondsRemaining / 60}:${(secondsRemaining % 60).toString().padStart(2, '0')}")
-        qr?.let { Image(it.asImageBitmap(), "Pairing QR", Modifier.size(360.dp)) }
-        if (paired) Text("Playlist received. Sync will begin shortly.")
+        qr?.let { Image(it.asImageBitmap(), "Pairing QR code", Modifier.size(360.dp)) }
     }
 }

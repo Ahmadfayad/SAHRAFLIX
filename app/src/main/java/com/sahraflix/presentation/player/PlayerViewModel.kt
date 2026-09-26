@@ -1,132 +1,185 @@
 package com.sahraflix.presentation.player
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
+import android.net.Uri
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.sahraflix.data.local.dao.dashboard.DashboardDao
+import com.sahraflix.data.local.entity.FavoriteEntity
+import com.sahraflix.data.local.entity.WatchProgressEntity
+import com.sahraflix.data.repository.PlaylistSyncer
 import com.sahraflix.domain.model.CatalogEntry
-import com.sahraflix.domain.model.PlayUrl
+import com.sahraflix.domain.model.IptvEpisode
+import com.sahraflix.domain.model.PlayRequest
+import com.sahraflix.domain.model.StreamType
 import com.sahraflix.domain.repository.ContentRepository
 import com.sahraflix.domain.repository.IptvVideoPlayer
-import com.sahraflix.domain.model.StreamingContent
-import com.sahraflix.domain.repository.StreamingRepository
+import com.sahraflix.domain.repository.PlayerState
+import com.sahraflix.player.PlaybackService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import javax.inject.Inject
-import dagger.hilt.android.qualifiers.ApplicationContext
-import com.sahraflix.player.CastPlaybackController
+
+/**
+ * Activity-scoped. Provided to every screen through [LocalPlayerViewModel] — the previous code
+ * called hiltViewModel() inside each NavHost destination, which creates a *separate* instance per
+ * back-stack entry, so screens were driving a ViewModel that MainActivity never observed.
+ */
+val LocalPlayerViewModel = staticCompositionLocalOf<PlayerViewModel> { error("PlayerViewModel not provided") }
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     val player: IptvVideoPlayer,
-    private val contentRepository: ContentRepository,
-    private val streamingRepository: StreamingRepository
-    ,private val castPlaybackController: CastPlaybackController
+    private val repository: ContentRepository,
+    private val dashboardDao: DashboardDao
 ) : ViewModel() {
-    private val _isHomeVisible = MutableStateFlow(true)
-    val isHomeVisible: StateFlow<Boolean> = _isHomeVisible.asStateFlow()
+
+    /** True while the full-screen player is shown. */
+    private val _isPlayerVisible = MutableStateFlow(false)
+    val isPlayerVisible: StateFlow<Boolean> = _isPlayerVisible.asStateFlow()
     private val _isResolving = MutableStateFlow(false)
     val isResolving: StateFlow<Boolean> = _isResolving.asStateFlow()
-    private val _embedUrl = MutableStateFlow<String?>(null)
-    val embedUrl: StateFlow<String?> = _embedUrl.asStateFlow()
-    private val _playerError = MutableStateFlow<String?>(null)
-    val playerError: StateFlow<String?> = _playerError.asStateFlow()
-    private val _isPreviewing = MutableStateFlow(false)
-    val isPreviewing: StateFlow<Boolean> = _isPreviewing.asStateFlow()
-    private var bufferingJob: Job? = null
-    private var currentRawUrl: String? = null
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
 
-    fun playStream(url: String, isLive: Boolean = false) {
-        _playerError.value = null
-        currentRawUrl = url
-        bufferingJob?.cancel()
-        bufferingJob = viewModelScope.launch {
-            delay(10_000)
-            if (player.playerState.value == com.sahraflix.domain.repository.PlayerState.BUFFERING) {
-                playExternally(url)
+    val favoriteIds: StateFlow<Set<String>> = dashboardDao.observeFavorites()
+        .map { list -> list.map { it.streamId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    private var progressJob: Job? = null
+
+    init {
+        // Persist progress for VOD while playing; also when playback pauses/ends.
+        viewModelScope.launch {
+            player.playerState.collect { state ->
+                if (state == PlayerState.PAUSED || state == PlayerState.ENDED) saveProgress()
             }
         }
-        ContextCompat.startForegroundService(context, Intent(context, com.sahraflix.player.PlaybackService::class.java))
-        _embedUrl.value = null
-        player.playStream(url, isLive)
-        _isHomeVisible.value = false
-        _isPreviewing.value = false
     }
 
-    fun previewStream(url: String) {
-        if (url.isBlank() || !_isHomeVisible.value) return
-        bufferingJob?.cancel()
-        currentRawUrl = url
-        _isPreviewing.value = true
-        player.playStream(url, isLive = true)
+    /** Opens an IPTV live channel / movie. Series are handled by the detail screen. */
+    fun play(entry: CatalogEntry.Iptv) = launchPlayback { repository.playRequest(entry) }
+
+    fun playEpisode(series: CatalogEntry.Iptv, episode: IptvEpisode) =
+        launchPlayback { repository.playRequest(series, episode) }
+
+    fun playCatchup(streamId: String, startMs: Long, endMs: Long) = launchPlayback {
+        repository.catchupRequest(streamId, startMs, endMs)
+            ?: throw IllegalStateException("Catch-up isn't available for this channel")
     }
 
-    fun stopPreview() {
-        if (!_isPreviewing.value) return
-        _isPreviewing.value = false
-        player.player.stop()
+    /** Resumes a Continue Watching item (movie, episode or catch-up) straight from its saved progress. */
+    fun resume(contentId: String) = launchPlayback {
+        val p = dashboardDao.getProgress(contentId) ?: throw IllegalStateException("Nothing to resume")
+        val baseId = contentId.substringBefore(":ep:").substringBefore(":catchup:")
+        val base = repository.iptvEntry(baseId)
+        PlayRequest(
+            url = p.streamUrl, title = p.title, contentId = p.contentId, isLive = false,
+            posterUrl = p.posterUrl, resumePositionMs = p.positionMs,
+            headers = if (base != null && baseId == contentId) repository.playRequest(base).headers else emptyMap()
+        )
     }
 
-    fun playExternally(url: String = currentRawUrl.orEmpty()) {
-        if (url.isBlank()) return
+    fun playFromStart(entry: CatalogEntry.Iptv) = launchPlayback {
+        repository.playRequest(entry).copy(resumePositionMs = 0)
+    }
+
+    private fun launchPlayback(build: suspend () -> PlayRequest) {
+        viewModelScope.launch {
+            _isResolving.value = true
+            _message.value = null
+            runCatching { build() }
+                .onSuccess { start(it) }
+                .onFailure { _message.value = PlaylistSyncer.describe(it) }
+            _isResolving.value = false
+        }
+    }
+
+    private fun start(request: PlayRequest) {
+        saveProgress() // for whatever was playing before
+        // Plain startService: Media3 promotes the session service to foreground when needed.
+        runCatching { context.startService(Intent(context, PlaybackService::class.java)) }
+        player.play(request)
+        _isPlayerVisible.value = true
+        progressJob?.cancel()
+        if (!request.isLive) {
+            progressJob = viewModelScope.launch {
+                while (isActive) { delay(15_000); saveProgress() }
+            }
+        }
+    }
+
+    fun retry() = player.retry()
+
+    /** Leaves the full-screen player. Live TV stops (saves bandwidth / provider connection slots). */
+    fun closePlayer() {
+        saveProgress()
+        progressJob?.cancel()
+        _isPlayerVisible.value = false
+        player.stop()
+    }
+
+    fun clearMessage() { _message.value = null }
+
+    fun toggleFavorite(entry: CatalogEntry) {
+        val iptv = entry as? CatalogEntry.Iptv ?: return
+        viewModelScope.launch {
+            val id = iptv.stream.id
+            if (id in favoriteIds.value) {
+                dashboardDao.removeFavorite(id)
+                _message.value = "Removed \"${iptv.title}\" from favourites"
+            } else {
+                dashboardDao.addFavorite(FavoriteEntity(id))
+                _message.value = "Added \"${iptv.title}\" to favourites"
+            }
+        }
+    }
+
+    fun openExternally() {
+        val request = player.current.value ?: return
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(android.net.Uri.parse(url), "video/*")
+            setDataAndType(Uri.parse(request.url), "video/*")
+            putExtra("title", request.title)
+            request.headers["User-Agent"]?.let { putExtra("headers", arrayOf("User-Agent", it)) }
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        val packages = listOf("org.videolan.vlc", "com.mxtech.videoplayer.ad")
-        val resolver = context.packageManager
-        packages.firstOrNull { packageName ->
-            intent.setPackage(packageName)
-            resolver.resolveActivity(intent, 0) != null
-        }?.let { packageName ->
-            intent.setPackage(packageName)
-            context.startActivity(intent)
-        } ?: run {
-            intent.setPackage(null)
-            context.startActivity(Intent.createChooser(intent, "Play externally"))
+        try {
+            context.startActivity(Intent.createChooser(intent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            player.player.pause()
+        } catch (e: ActivityNotFoundException) {
+            _message.value = "No external video player installed (try VLC or MX Player)"
         }
     }
 
-    fun castCurrent() {
-        currentRawUrl?.takeIf { it.isNotBlank() }?.let(castPlaybackController::play)
-    }
-
-    fun playCatalogEntry(entry: CatalogEntry) {
+    private fun saveProgress() {
+        val request = player.current.value ?: return
+        if (request.isLive) return
+        val position = player.player.currentPosition
+        val duration = player.player.duration
+        if (duration <= 0 || position <= 0) return
         viewModelScope.launch {
-            _isResolving.value = true
-            runCatching { contentRepository.resolveStream(entry) }
-                .onSuccess { url ->
-                    when (url) {
-                        is PlayUrl.Direct -> playStream(url.url, entry is CatalogEntry.Iptv && entry.stream.streamType == com.sahraflix.domain.model.StreamType.LIVE)
-                        is PlayUrl.Embed -> {
-                            _embedUrl.value = url.htmlUrl
-                            _isHomeVisible.value = false
-                        }
-                    }
-                }
-                .onFailure { _playerError.value = it.message ?: "Unable to start playback" }
-            _isResolving.value = false
+            dashboardDao.saveProgress(
+                WatchProgressEntity(request.contentId, request.title, request.posterUrl, request.url, position, duration)
+            )
         }
     }
 
-    fun playStreamingContent(content: StreamingContent, season: Int? = null, episode: Int? = null) {
-        viewModelScope.launch {
-            _isResolving.value = true
-            runCatching { streamingRepository.resolveStream(content, season, episode) }
-                .onSuccess { playStream(it.url) }
-                .onFailure { _playerError.value = it.message ?: "Unable to resolve stream" }
-            _isResolving.value = false
-        }
-    }
-
-    fun showHome() {
-        _isHomeVisible.value = true
+    override fun onCleared() {
+        saveProgress()
+        super.onCleared()
     }
 }

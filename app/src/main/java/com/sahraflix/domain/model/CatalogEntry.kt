@@ -9,20 +9,25 @@ sealed interface CatalogEntry {
         val stream: StreamItem,
         val source: ContentSource
     ) : CatalogEntry {
-        override val id: String = stream.id
-        override val title: String = stream.name
-        override val posterUrl: String? = stream.logoUrl
+        override val id: String get() = stream.id
+        override val title: String get() = stream.name
+        override val posterUrl: String? get() = stream.logoUrl
     }
 
-    data class Streaming(
-        override val id: String,
+    data class Tmdb(
+        val tmdbId: Int,
         override val title: String,
         override val posterUrl: String?,
-        val tmdbId: Int,
-        val overview: String?,
-        val releaseYear: Int?,
-        val rating: Double?,
-        val seasons: List<TmdbSeason> = emptyList(),
-        val source: ContentSource = ContentSource.VIDSRC_TMDB
-    ) : CatalogEntry
+        val isSeries: Boolean,
+        val overview: String? = null,
+        val releaseYear: Int? = null,
+        val rating: Double? = null,
+        val backdropUrl: String? = null
+    ) : CatalogEntry {
+        override val id: String get() = routeId(tmdbId, isSeries)
+
+        companion object {
+            fun routeId(tmdbId: Int, isSeries: Boolean) = "tmdb-${if (isSeries) "tv" else "movie"}-$tmdbId"
+        }
+    }
 }

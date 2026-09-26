@@ -2,24 +2,20 @@ package com.sahraflix.di
 
 import android.content.Context
 import androidx.room.Room
+import com.sahraflix.data.local.ALL_MIGRATIONS
 import com.sahraflix.data.local.IptvDatabase
-import com.sahraflix.data.local.MIGRATION_1_2
-import com.sahraflix.data.local.MIGRATION_2_3
-import com.sahraflix.data.local.MIGRATION_3_4
-import com.sahraflix.data.local.MIGRATION_4_5
-import com.sahraflix.data.local.MIGRATION_5_6
-import com.sahraflix.data.local.MIGRATION_6_7
 import com.sahraflix.data.local.dao.CategoryDao
 import com.sahraflix.data.local.dao.EpgDao
 import com.sahraflix.data.local.dao.PlaylistDao
 import com.sahraflix.data.local.dao.StreamDao
-import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.dao.StreamingItemDao
+import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.dao.dashboard.DashboardDao
 import com.sahraflix.data.repository.ProfileRepositoryImpl
-import com.sahraflix.data.repository.StreamRepositoryImpl
+import com.sahraflix.data.repository.UnifiedContentRepository
+import com.sahraflix.domain.repository.ContentRepository
 import com.sahraflix.domain.repository.ProfileRepository
-import com.sahraflix.domain.repository.StreamRepository
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -34,38 +30,21 @@ object DatabaseModule {
     @Singleton
     fun provideIptvDatabase(@ApplicationContext context: Context): IptvDatabase =
         Room.databaseBuilder(context, IptvDatabase::class.java, "iptv.db")
-            .addMigrations(MIGRATION_1_2)
-            .addMigrations(MIGRATION_2_3)
-            .addMigrations(MIGRATION_3_4)
-            .addMigrations(MIGRATION_4_5)
-            .addMigrations(MIGRATION_5_6)
-            .addMigrations(MIGRATION_6_7)
+            .addMigrations(*ALL_MIGRATIONS)
             .build()
 
-    @Provides
-    fun providePlaylistDao(database: IptvDatabase): PlaylistDao = database.playlistDao()
+    @Provides fun providePlaylistDao(db: IptvDatabase): PlaylistDao = db.playlistDao()
+    @Provides fun provideCategoryDao(db: IptvDatabase): CategoryDao = db.categoryDao()
+    @Provides fun provideStreamDao(db: IptvDatabase): StreamDao = db.streamDao()
+    @Provides fun provideEpgDao(db: IptvDatabase): EpgDao = db.epgDao()
+    @Provides fun provideUserProfileDao(db: IptvDatabase): UserProfileDao = db.userProfileDao()
+    @Provides fun provideStreamingItemDao(db: IptvDatabase): StreamingItemDao = db.streamingItemDao()
+    @Provides fun provideDashboardDao(db: IptvDatabase): DashboardDao = db.dashboardDao()
+}
 
-    @Provides
-    fun provideCategoryDao(database: IptvDatabase): CategoryDao = database.categoryDao()
-
-    @Provides
-    fun provideStreamDao(database: IptvDatabase): StreamDao = database.streamDao()
-
-    @Provides
-    fun provideEpgDao(database: IptvDatabase): EpgDao = database.epgDao()
-
-    @Provides
-    fun provideUserProfileDao(database: IptvDatabase): UserProfileDao = database.userProfileDao()
-
-    @Provides
-    fun provideStreamingItemDao(database: IptvDatabase): StreamingItemDao = database.streamingItemDao()
-
-    @Provides
-    fun provideDashboardDao(database: IptvDatabase): DashboardDao = database.dashboardDao()
-
-    @Provides
-    fun provideStreamRepository(implementation: StreamRepositoryImpl): StreamRepository = implementation
-
-    @Provides
-    fun provideProfileRepository(implementation: ProfileRepositoryImpl): ProfileRepository = implementation
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
+    @Binds @Singleton abstract fun bindContentRepository(impl: UnifiedContentRepository): ContentRepository
+    @Binds @Singleton abstract fun bindProfileRepository(impl: ProfileRepositoryImpl): ProfileRepository
 }

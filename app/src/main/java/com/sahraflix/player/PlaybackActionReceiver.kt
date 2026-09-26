@@ -7,14 +7,15 @@ import com.sahraflix.domain.repository.IptvVideoPlayer
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/** Picture-in-picture remote actions. */
 @AndroidEntryPoint
 class PlaybackActionReceiver : BroadcastReceiver() {
     @Inject lateinit var player: IptvVideoPlayer
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_PLAY_PAUSE -> if (player.player.isPlaying) player.player.pause() else player.player.play()
-            ACTION_CLOSE -> player.player.stop()
+            ACTION_PLAY_PAUSE -> with(player.player) { if (isPlaying) pause() else play() }
+            ACTION_CLOSE -> player.stop()
         }
     }
 

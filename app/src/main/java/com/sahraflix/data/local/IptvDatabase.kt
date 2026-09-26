@@ -7,16 +7,16 @@ import com.sahraflix.data.local.dao.CategoryDao
 import com.sahraflix.data.local.dao.EpgDao
 import com.sahraflix.data.local.dao.PlaylistDao
 import com.sahraflix.data.local.dao.StreamDao
-import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.dao.StreamingItemDao
+import com.sahraflix.data.local.dao.UserProfileDao
 import com.sahraflix.data.local.dao.dashboard.DashboardDao
 import com.sahraflix.data.local.entity.CategoryEntity
-import com.sahraflix.data.local.entity.EpgEventEntity
+import com.sahraflix.data.local.entity.EpgProgrammeEntity
+import com.sahraflix.data.local.entity.FavoriteEntity
 import com.sahraflix.data.local.entity.PlaylistEntity
 import com.sahraflix.data.local.entity.StreamItemEntity
-import com.sahraflix.data.local.entity.UserProfileEntity
 import com.sahraflix.data.local.entity.StreamingItemEntity
-import com.sahraflix.data.local.entity.FavoriteEntity
+import com.sahraflix.data.local.entity.UserProfileEntity
 import com.sahraflix.data.local.entity.WatchProgressEntity
 
 @Database(
@@ -24,14 +24,14 @@ import com.sahraflix.data.local.entity.WatchProgressEntity
         PlaylistEntity::class,
         CategoryEntity::class,
         StreamItemEntity::class,
-        EpgEventEntity::class,
+        EpgProgrammeEntity::class,
         UserProfileEntity::class,
         StreamingItemEntity::class,
         FavoriteEntity::class,
         WatchProgressEntity::class
     ],
-    version = 7,
-    exportSchema = false
+    version = 8,
+    exportSchema = true
 )
 @TypeConverters(IptvConverters::class)
 abstract class IptvDatabase : RoomDatabase() {

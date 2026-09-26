@@ -1,195 +1,152 @@
 package com.sahraflix.data.repository
 
-import android.util.JsonReader
-import android.util.JsonToken
-import com.sahraflix.data.local.dao.CategoryDao
-import com.sahraflix.data.local.dao.PlaylistDao
-import com.sahraflix.data.local.dao.StreamDao
 import com.sahraflix.data.local.entity.CategoryEntity
-import com.sahraflix.data.local.entity.PlaylistType
+import com.sahraflix.data.local.entity.PlaylistEntity
 import com.sahraflix.data.local.entity.StreamItemEntity
 import com.sahraflix.domain.model.StreamType
 import com.sahraflix.domain.repository.PlaylistProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import java.io.InputStreamReader
-import java.nio.charset.StandardCharsets
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
 import javax.inject.Inject
+import javax.inject.Singleton
 
+/**
+ * Stalker / Ministra middleware (MAG set-top-box protocol).
+ * handshake → Bearer token → get_profile → itv genres + channels. Stream links are created
+ * on demand at play time (create_link), because they are short-lived and token-bound.
+ * VOD on Stalker portals is paged per category and is not synchronised (live TV only).
+ */
+@Singleton
 class StalkerProviderImpl @Inject constructor(
-    private val httpClient: OkHttpClient,
-    private val playlistDao: PlaylistDao,
-    private val categoryDao: CategoryDao,
-    private val streamDao: StreamDao,
-    private val xmltvEpgSynchronizer: XmltvEpgSynchronizer
+    private val httpClient: OkHttpClient
 ) : PlaylistProvider {
-    override suspend fun syncCategories(playlistId: String) {
-        syncType(playlistId, StreamType.LIVE, "get_all_channels")
-    }
 
-    override suspend fun syncStreams(playlistId: String) = withContext(Dispatchers.IO) {
-        syncType(playlistId, StreamType.LIVE, "get_all_channels")
-        syncType(playlistId, StreamType.MOVIE, "get_ordered_list", "vod")
-        syncType(playlistId, StreamType.SERIES, "get_ordered_list", "series")
-    }
+    private data class Session(val endpoint: HttpUrl, val mac: String, val token: String, val createdAt: Long)
+    private val sessions = HashMap<String, Session>()
+    private val mutex = Mutex()
 
-    override suspend fun syncEpg(playlistId: String) {
-        xmltvEpgSynchronizer.sync(playlistId)
-    }
-
-    private suspend fun syncType(
-        playlistId: String,
-        streamType: StreamType,
-        action: String,
-        type: String? = null
-    ) = withContext(Dispatchers.IO) {
-        val playlist = playlistDao.getById(playlistId) ?: error("Playlist not found: $playlistId")
-        require(playlist.type == PlaylistType.STALKER) { "Playlist is not Stalker: $playlistId" }
-        val request = buildRequest(playlist.url, playlist.username.orEmpty(), action, type)
-
-        httpClient.newCall(request).execute().use { response ->
-            require(response.isSuccessful) { "Stalker $action failed: ${response.code}" }
-            val body = response.body ?: error("Stalker response was empty")
-            body.byteStream().use { input ->
-                InputStreamReader(input, StandardCharsets.UTF_8).use { inputReader ->
-                    JsonReader(inputReader).use { reader ->
-                        val streams = ArrayList<StreamItemEntity>(BATCH_SIZE)
-                        val categories = ArrayList<CategoryEntity>(BATCH_SIZE)
-                        val categoryIds = HashSet<String>(BATCH_SIZE)
-                        readResponse(reader, playlistId, streamType) { item ->
-                            val categoryId = "$playlistId:stalker:${streamType.name}:${item.categoryId}"
-                            if (categoryIds.add(categoryId)) {
-                                categories += CategoryEntity(
-                                    id = categoryId,
-                                    name = item.categoryName,
-                                    playlistId = playlistId,
-                                    streamType = streamType
-                                )
-                            }
-                            streams += StreamItemEntity(
-                                id = "$playlistId:stalker:${streamType.name}:${item.id}",
-                                name = item.name,
-                                streamUrl = item.url,
-                                logoUrl = item.logoUrl,
-                                streamType = streamType,
-                                categoryId = categoryId,
-                                playlistId = playlistId,
-                                providerId = item.id
-                            )
-                            if (streams.size == BATCH_SIZE) {
-                                categoryDao.insertAll(categories)
-                                streamDao.insertStreams(streams)
-                                categories.clear()
-                                streams.clear()
-                            }
-                        }
-                        if (streams.isNotEmpty()) {
-                            categoryDao.insertAll(categories)
-                            streamDao.insertStreams(streams)
-                        }
-                    }
-                }
+    override suspend fun sync(playlist: PlaylistEntity, writer: SyncWriter) = withContext(Dispatchers.IO) {
+        val session = session(playlist, forceNew = true)
+        val genres = LinkedHashMap<String, String>()
+        runCatching {
+            val js = call(session, "itv", "get_genres").optJSONArray("js")
+            for (i in 0 until (js?.length() ?: 0)) {
+                val g = js!!.optJSONObject(i) ?: continue
+                genres[g.optString("id")] = g.optString("title").ifBlank { "Genre ${g.optString("id")}" }
             }
+        }
+        genres.forEach { (id, title) -> writer.category(CategoryEntity(catId(playlist.id, id), title, playlist.id, StreamType.LIVE)) }
+        writer.category(CategoryEntity(catId(playlist.id, "0"), "All channels", playlist.id, StreamType.LIVE))
+
+        val data = call(session, "itv", "get_all_channels").optJSONObject("js")?.optJSONArray("data")
+            ?: throw IOException("Portal returned no channel list")
+        for (i in 0 until data.length()) {
+            val ch = data.optJSONObject(i) ?: continue
+            val id = ch.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val cmd = ch.optString("cmd").takeIf { it.isNotBlank() } ?: continue
+            val genre = ch.optString("tv_genre_id").takeIf { it in genres } ?: "0"
+            writer.stream(
+                StreamItemEntity(
+                    id = "${playlist.id}:LIVE:$id",
+                    name = ch.optString("name").ifBlank { "Channel $id" },
+                    // Stored with a marker; resolved to a real URL through create_link at play time.
+                    streamUrl = "$STALKER_SCHEME$cmd",
+                    logoUrl = ch.optString("logo").takeIf { it.startsWith("http") },
+                    streamType = StreamType.LIVE,
+                    categoryId = catId(playlist.id, genre),
+                    playlistId = playlist.id,
+                    epgChannelId = ch.optString("xmltv_id").takeIf { it.isNotBlank() },
+                    providerId = id,
+                    sortOrder = ch.optString("number").toIntOrNull() ?: i
+                )
+            )
         }
     }
 
-    private fun buildRequest(base: String, mac: String, action: String, type: String?): Request {
-        val url = base.trimEnd('/').toHttpUrl().newBuilder()
-            .addPathSegment("server.php")
-            .addQueryParameter("type", "itv")
+    /** Turns a stored "stalker:<cmd>" into a playable URL. Retries once with a fresh token. */
+    suspend fun createLink(playlist: PlaylistEntity, storedUrl: String): String = withContext(Dispatchers.IO) {
+        val cmd = storedUrl.removePrefix(STALKER_SCHEME)
+        suspend fun attempt(force: Boolean): String {
+            val s = session(playlist, force)
+            val js = call(s, "itv", "create_link", "cmd" to cmd, "forced_storage" to "0", "disable_ad" to "0").opt("js")
+            val link = when (js) {
+                is JSONObject -> js.optString("cmd")
+                else -> ""
+            }
+            return cleanCmd(link).takeIf { it.startsWith("http") } ?: throw IOException("Portal did not return a stream link")
+        }
+        runCatching { attempt(false) }.getOrElse { attempt(true) }
+    }
+
+    private suspend fun session(playlist: PlaylistEntity, forceNew: Boolean): Session = mutex.withLock {
+        val cached = sessions[playlist.id]
+        if (!forceNew && cached != null && System.currentTimeMillis() - cached.createdAt < TOKEN_TTL_MS) return cached
+        val mac = playlist.macAddress?.uppercase()?.trim()?.takeIf { MAC.matches(it) }
+            ?: throw IOException("A valid MAC address (00:1A:79:XX:XX:XX) is required for Stalker portals")
+        val endpoint = resolveEndpoint(playlist.url, mac)
+        val hs = rawCall(endpoint, mac, null, "stb", "handshake", "token" to "")
+        val token = hs.optJSONObject("js")?.optString("token")?.takeIf { it.isNotBlank() }
+            ?: throw IOException("Portal handshake failed (no token). Check the portal URL and MAC.")
+        val s = Session(endpoint, mac, token, System.currentTimeMillis())
+        // get_profile activates the token on most Ministra builds.
+        runCatching { rawCall(endpoint, mac, token, "stb", "get_profile", "hd" to "1", "stb_type" to "MAG250") }
+        sessions[playlist.id] = s
+        s
+    }
+
+    /** Portal URLs come as ".../c/", ".../stalker_portal/c/" or bare host; find load.php / portal.php. */
+    private fun resolveEndpoint(portal: String, mac: String): HttpUrl {
+        var base = portal.trim()
+        if (!base.startsWith("http", true)) base = "http://$base"
+        base = base.trimEnd('/').removeSuffix("/c").removeSuffix("/index.html").trimEnd('/')
+        val candidates = listOf("$base/server/load.php", "$base/portal.php", "$base/stalker_portal/server/load.php")
+        for (candidate in candidates) {
+            val url = candidate.toHttpUrlOrNull() ?: continue
+            val ok = runCatching { rawCall(url, mac, null, "stb", "handshake", "token" to "").has("js") }.getOrDefault(false)
+            if (ok) return url
+        }
+        throw IOException("Could not reach a Stalker portal API at $portal")
+    }
+
+    private fun call(s: Session, type: String, action: String, vararg params: Pair<String, String>): JSONObject =
+        rawCall(s.endpoint, s.mac, s.token, type, action, *params)
+
+    private fun rawCall(endpoint: HttpUrl, mac: String, token: String?, type: String, action: String, vararg params: Pair<String, String>): JSONObject {
+        val url = endpoint.newBuilder()
+            .addQueryParameter("type", type)
             .addQueryParameter("action", action)
-            .apply { type?.let { addQueryParameter("p", it) } }
+            .apply { params.forEach { (k, v) -> addQueryParameter(k, v) } }
+            .addQueryParameter("JsHttpRequest", "1-xml")
             .build()
-        return Request.Builder()
-            .url(url)
-            .header("User-Agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C)")
-            .header("Cookie", "mac=$mac")
+        val request = Request.Builder().url(url)
+            .header("User-Agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3")
             .header("X-User-Agent", "Model: MAG250; Link: WiFi")
-            .get()
+            .header("Cookie", "mac=${mac.replace(":", "%3A")}; stb_lang=en; timezone=UTC")
+            .header("Referer", endpoint.newBuilder().encodedPath("/c/").query(null).build().toString())
+            .apply { token?.let { header("Authorization", "Bearer $it") } }
             .build()
+        httpClient.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Portal error ${r.code} on $action")
+            val body = r.body?.string().orEmpty()
+            return runCatching { JSONObject(body) }.getOrElse { throw IOException("Unexpected portal response on $action") }
+        }
     }
 
-    private suspend fun readResponse(
-        reader: JsonReader,
-        playlistId: String,
-        streamType: StreamType,
-        emit: suspend (StalkerRecord) -> Unit
-    ) {
-        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-            reader.skipValue()
-            return
-        }
-        reader.beginObject()
-        while (reader.hasNext()) {
-            when (reader.nextName()) {
-                "js", "data" -> readArray(reader, playlistId, streamType, emit)
-                else -> reader.skipValue()
-            }
-        }
-        reader.endObject()
-    }
-
-    private suspend fun readArray(
-        reader: JsonReader,
-        playlistId: String,
-        streamType: StreamType,
-        emit: suspend (StalkerRecord) -> Unit
-    ) {
-        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
-            reader.skipValue()
-            return
-        }
-        reader.beginArray()
-        while (reader.hasNext()) {
-            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-                reader.skipValue()
-                continue
-            }
-            var id: String? = null
-            var name = "Unnamed stream"
-            var logo: String? = null
-            var categoryId = "uncategorized"
-            var categoryName = "Uncategorized"
-            var cmd: String? = null
-            reader.beginObject()
-            while (reader.hasNext()) {
-                when (reader.nextName()) {
-                    "id", "ch_id", "series_id" -> id = reader.nextNullableString()
-                    "name", "title" -> name = reader.nextNullableString() ?: name
-                    "logo", "logo_2" -> logo = reader.nextNullableString()
-                    "tv_genre_id", "category_id" -> categoryId = reader.nextNullableString() ?: categoryId
-                    "tv_genre_name", "category_name" -> categoryName = reader.nextNullableString() ?: categoryName
-                    "cmd", "stream_url" -> cmd = reader.nextNullableString()
-                    else -> reader.skipValue()
-                }
-            }
-            reader.endObject()
-            id?.takeIf { it.isNotBlank() }?.let {
-                emit(StalkerRecord(it, name, logo, categoryId, categoryName, cmd ?: it))
-            }
-        }
-        reader.endArray()
-    }
-
-    private fun JsonReader.nextNullableString(): String? =
-        if (peek() == JsonToken.NULL) {
-            nextNull()
-            null
-        } else nextString()
-
-    private data class StalkerRecord(
-        val id: String,
-        val name: String,
-        val logoUrl: String?,
-        val categoryId: String,
-        val categoryName: String,
-        val url: String
-    )
-
-    private companion object {
-        const val BATCH_SIZE = 500
+    companion object {
+        const val STALKER_SCHEME = "stalker:"
+        private const val TOKEN_TTL_MS = 30 * 60 * 1000L
+        private val MAC = Regex("([0-9A-F]{2}:){5}[0-9A-F]{2}")
+        private fun catId(playlistId: String, genre: String) = "$playlistId:LIVE:genre:$genre"
+        /** "ffmpeg http://…", "auto http://…" → "http://…" */
+        fun cleanCmd(cmd: String): String = cmd.trim().split(' ').lastOrNull { it.startsWith("http") } ?: cmd.trim()
     }
 }
