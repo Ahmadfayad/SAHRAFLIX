@@ -15,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,10 @@ class SettingsViewModel @Inject constructor(
     val uiMode: StateFlow<UiMode> = preferences.observeString("ui_mode", UiMode.AUTO.name)
         .map { runCatching { UiMode.valueOf(it) }.getOrDefault(UiMode.AUTO) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiMode.AUTO)
+
+    val modeChosen: StateFlow<Boolean> = preferences.observeString("ui_mode", "")
+        .map { it.isNotBlank() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()

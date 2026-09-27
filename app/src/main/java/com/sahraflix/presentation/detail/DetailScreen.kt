@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,13 +33,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.tv.material3.Button
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.OutlinedButton
-import androidx.tv.material3.Text
+import com.sahraflix.presentation.components.SahraButton
+import com.sahraflix.presentation.components.SahraText
 import coil.compose.AsyncImage
 import com.sahraflix.domain.model.ContentDetails
 import com.sahraflix.domain.model.WatchProvider
@@ -55,8 +56,8 @@ fun DetailScreen(viewModel: DetailViewModel = hiltViewModel()) {
         when (val s = state) {
             DetailState.Loading -> CircularProgressIndicator(color = SahraGold, modifier = Modifier.align(Alignment.Center))
             is DetailState.Failed -> Column(Modifier.align(Alignment.Center), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(s.message, style = MaterialTheme.typography.titleMedium)
-                Button(onClick = viewModel::load) { Text("Try again") }
+                SahraText(s.message, fontSize = 18.sp, color = Color.White)
+                SahraButton(onClick = viewModel::load) { SahraText("Try again") }
             }
             is DetailState.Loaded -> DetailContent(s.details)
         }
@@ -82,28 +83,39 @@ private fun DetailContent(details: ContentDetails) {
                         AsyncImage(it, details.title, Modifier.width(180.dp).height(270.dp), contentScale = ContentScale.Crop)
                     }
                     Column(Modifier.widthIn(max = 680.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(details.title, style = MaterialTheme.typography.displaySmall)
-                        Text(metaLine(details), style = MaterialTheme.typography.bodyMedium)
-                        details.description?.let { Text(it, maxLines = 6, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge) }
+                        SahraText(details.title, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        SahraText(metaLine(details), fontSize = 14.sp, color = Color.Gray)
+                        details.description?.let { SahraText(it, maxLines = 6, overflow = TextOverflow.Ellipsis, fontSize = 16.sp, color = Color.LightGray) }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             when (details) {
-                                is ContentDetails.Iptv -> if (details.seasons.isEmpty()) {
-                                    Button(onClick = { player.play(details.entry) }) { Text("Play") }
-                                    OutlinedButton(onClick = { player.playFromStart(details.entry) }) { Text("From start") }
-                                    OutlinedButton(onClick = { player.toggleFavorite(details.entry) }) { Text("Favourite") }
-                                }
-                                is ContentDetails.Tmdb -> {
-                                    details.libraryMatches.firstOrNull()?.let { match ->
-                                        if (!details.entry.isSeries) Button(onClick = { player.play(match) }) { Text("Play from your library") }
+                                is ContentDetails.Iptv -> {
+                                    if (details.seasons.isEmpty()) {
+                                        SahraButton(onClick = { player.play(details.entry) }) { SahraText("Play") }
+                                        SahraButton(onClick = { player.playFromStart(details.entry) }) { SahraText("From start") }
+                                        SahraButton(onClick = { player.toggleFavorite(details.entry) }) { SahraText("Favourite") }
                                     }
-                                    details.trailerYoutubeKey?.let { key ->
-                                        OutlinedButton(onClick = {
+                                    details.tmdbMatch?.trailerYoutubeKey?.let { key ->
+                                        SahraButton(onClick = {
                                             val app = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key"))
                                             val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$key"))
                                             try { context.startActivity(app) } catch (_: ActivityNotFoundException) {
                                                 runCatching { context.startActivity(web) }
                                             }
-                                        }) { Text("Trailer") }
+                                        }) { SahraText("Trailer") }
+                                    }
+                                }
+                                is ContentDetails.Tmdb -> {
+                                    details.libraryMatches.firstOrNull()?.let { match ->
+                                        if (!details.entry.isSeries) SahraButton(onClick = { player.play(match) }) { SahraText("Play from your library") }
+                                    }
+                                    details.trailerYoutubeKey?.let { key ->
+                                        SahraButton(onClick = {
+                                            val app = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key"))
+                                            val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$key"))
+                                            try { context.startActivity(app) } catch (_: ActivityNotFoundException) {
+                                                runCatching { context.startActivity(web) }
+                                            }
+                                        }) { SahraText("Trailer") }
                                     }
                                 }
                             }
@@ -112,8 +124,11 @@ private fun DetailContent(details: ContentDetails) {
                 }
             }
             when (details) {
-                is ContentDetails.Iptv -> episodes(details, onPlay = { ep -> player.playEpisode(details.entry, ep) })
-                is ContentDetails.Tmdb -> tmdbSections(details)
+                is ContentDetails.Iptv -> {
+                    episodes(details, onPlay = { ep -> player.playEpisode(details.entry, ep) })
+                    details.tmdbMatch?.let { tmdbSections(it, skipLibrary = true) }
+                }
+                is ContentDetails.Tmdb -> tmdbSections(details, skipLibrary = false)
             }
         }
     }
@@ -136,15 +151,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.episodes(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(d.seasons.keys.sorted()) { season ->
-                    if (season == selected) Button(onClick = {}) { Text("Season $season") }
-                    else OutlinedButton(onClick = { selected = season }) { Text("Season $season") }
+                    SahraButton(onClick = { selected = season }) { 
+                        SahraText("Season $season", color = if (season == selected) Color.White else Color.Gray) 
+                    }
                 }
             }
             d.seasons[selected].orEmpty().forEach { ep ->
-                OutlinedButton(onClick = { onPlay(ep) }, modifier = Modifier.fillMaxWidth()) {
+                SahraButton(onClick = { onPlay(ep) }, modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("${ep.episode}. ${ep.title}", style = MaterialTheme.typography.titleSmall)
-                        ep.plot?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
+                        SahraText("${ep.episode}. ${ep.title}", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                        ep.plot?.let { SahraText(it, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, color = Color.Gray) }
                     }
                 }
             }
@@ -152,8 +168,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.episodes(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.tmdbSections(d: ContentDetails.Tmdb) {
-    if (d.libraryMatches.isNotEmpty()) item(key = "lib") {
+private fun LazyListScope.tmdbSections(d: ContentDetails.Tmdb, skipLibrary: Boolean) {
+    if (!skipLibrary && d.libraryMatches.isNotEmpty()) item(key = "lib") {
         val player = LocalPlayerViewModel.current
         Column {
             RailTitle("In your library")
@@ -170,12 +186,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.tmdbSections(d: Conte
             RailTitle("Where to watch")
             val wp = d.watchProviders
             if (wp == null || wp.isEmpty) {
-                Text("No licensed streaming options found for your region.", style = MaterialTheme.typography.bodyMedium)
+                SahraText("No licensed streaming options found for your region.", fontSize = 14.sp, color = Color.Gray)
             } else {
                 ProviderRow("Stream", wp.stream)
                 ProviderRow("Rent", wp.rent)
                 ProviderRow("Buy", wp.buy)
-                Text("Availability data from JustWatch via TMDB (${wp.region}).", style = MaterialTheme.typography.bodySmall)
+                SahraText("Availability data from JustWatch via TMDB (${wp.region}).", fontSize = 12.sp, color = Color.Gray)
             }
         }
     }
@@ -186,15 +202,30 @@ private fun androidx.compose.foundation.lazy.LazyListScope.tmdbSections(d: Conte
                 items(d.cast, key = { it.id }) { c ->
                     Column(Modifier.width(110.dp)) {
                         AsyncImage(c.profileUrl, c.name, Modifier.size(110.dp, 150.dp), contentScale = ContentScale.Crop)
-                        Text(c.name, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                        c.character?.let { Text(it, maxLines = 1, style = MaterialTheme.typography.bodySmall) }
+                        SahraText(c.name, maxLines = 1, fontSize = 14.sp, color = Color.White)
+                        c.character?.let { SahraText(it, maxLines = 1, fontSize = 12.sp, color = Color.Gray) }
                     }
                 }
             }
         }
     }
     if (d.seasons.isNotEmpty()) item(key = "seasons") {
-        Text(d.seasons.joinToString("  ·  ") { "${it.name} (${it.episodeCount} ep)" }, style = MaterialTheme.typography.bodyMedium)
+        SahraText(d.seasons.joinToString("  ·  ") { "${it.name} (${it.episodeCount} ep)" }, fontSize = 14.sp, color = Color.Gray)
+    }
+    if (d.similar.isNotEmpty()) item(key = "similar") {
+        Column {
+            RailTitle(if (d.entry.isSeries) "Similar Shows" else "Similar Movies")
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(d.similar, key = { it.id }) { similarItem -> 
+                    StreamCard(
+                        entry = similarItem, 
+                        onClick = { 
+                            // TODO: Pass navigation handler down to replace current DetailScreen
+                        }
+                    ) 
+                }
+            }
+        }
     }
 }
 
@@ -202,7 +233,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.tmdbSections(d: Conte
 private fun ProviderRow(label: String, providers: List<WatchProvider>) {
     if (providers.isEmpty()) return
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(label, modifier = Modifier.width(70.dp), style = MaterialTheme.typography.titleSmall)
+        SahraText(label, modifier = Modifier.width(70.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
         providers.take(8).forEach { p ->
             AsyncImage(p.logoUrl, p.name, Modifier.size(44.dp))
         }

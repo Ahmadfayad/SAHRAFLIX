@@ -11,6 +11,8 @@ import com.sahraflix.domain.repository.PlaylistProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onEach
 import okhttp3.OkHttpClient
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -26,38 +28,44 @@ class M3uProviderImpl @Inject constructor(
         var epgHint: String? = null
         var order = 0
         HttpStreams.open(context, httpClient, playlist.url, playlist.userAgent).use { input ->
-            input.bufferedReader().use { reader ->
-                // parse() is inline, so the suspending writes below run directly inside this coroutine:
-                // the playlist is streamed straight to the database without being held in memory.
-                parser.parse(reader, onHeader = { epgHint = it.epgUrls.firstOrNull() }) { entry ->
-                    val type = when (entry.kind) {
-                        M3uParser.Kind.LIVE -> StreamType.LIVE
-                        M3uParser.Kind.MOVIE -> StreamType.MOVIE
-                        M3uParser.Kind.SERIES -> StreamType.SERIES
+            parser.parseFlow(input)
+                .onEach { event ->
+                    when (event) {
+                        is M3uParser.ParseEvent.HeaderEvent -> {
+                            epgHint = event.header.epgUrls.firstOrNull()
+                        }
+                        is M3uParser.ParseEvent.EntryEvent -> {
+                            val entry = event.entry
+                            val type = when (entry.kind) {
+                                M3uParser.Kind.LIVE -> StreamType.LIVE
+                                M3uParser.Kind.MOVIE -> StreamType.MOVIE
+                                M3uParser.Kind.SERIES -> StreamType.SERIES
+                            }
+                            val groupName = entry.group?.takeIf { it.isNotBlank() } ?: UNCATEGORIZED
+                            val categoryId = "${playlist.id}:${type.name}:${hash(groupName)}"
+                            writer.category(CategoryEntity(categoryId, groupName, playlist.id, type))
+                            writer.stream(
+                                StreamItemEntity(
+                                    id = "${playlist.id}:${hash(entry.url + "|" + entry.title)}",
+                                    name = entry.title,
+                                    streamUrl = entry.url,
+                                    logoUrl = entry.logo,
+                                    streamType = type,
+                                    categoryId = categoryId,
+                                    playlistId = playlist.id,
+                                    epgChannelId = entry.tvgId ?: entry.attributes["tvg-name"],
+                                    catchupType = entry.catchup,
+                                    catchupSource = entry.catchupSource,
+                                    userAgent = entry.userAgent,
+                                    referrer = entry.referrer,
+                                    sortOrder = entry.attributes["tvg-chno"]?.toIntOrNull() ?: order
+                                )
+                            )
+                            order++
+                        }
                     }
-                    val groupName = entry.group?.takeIf { it.isNotBlank() } ?: UNCATEGORIZED
-                    val categoryId = "${playlist.id}:${type.name}:${hash(groupName)}"
-                    writer.category(CategoryEntity(categoryId, groupName, playlist.id, type))
-                    writer.stream(
-                        StreamItemEntity(
-                            id = "${playlist.id}:${hash(entry.url + "|" + entry.title)}",
-                            name = entry.title,
-                            streamUrl = entry.url,
-                            logoUrl = entry.logo,
-                            streamType = type,
-                            categoryId = categoryId,
-                            playlistId = playlist.id,
-                            epgChannelId = entry.tvgId ?: entry.attributes["tvg-name"],
-                            catchupType = entry.catchup,
-                            catchupSource = entry.catchupSource,
-                            userAgent = entry.userAgent,
-                            referrer = entry.referrer,
-                            sortOrder = entry.attributes["tvg-chno"]?.toIntOrNull() ?: order
-                        )
-                    )
-                    order++
                 }
-            }
+                .collect()
         }
         epgHint?.let { playlistDao.setEpgUrlIfMissing(playlist.id, it) }
         Unit

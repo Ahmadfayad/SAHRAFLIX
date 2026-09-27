@@ -34,6 +34,20 @@ interface TmdbApi {
         @Query("language") language: String,
         @Query("append_to_response") append: String = "credits,videos,watch/providers"
     ): Response<TmdbTvDto>
+
+    @GET("movie/{id}/similar")
+    suspend fun similarMovies(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("language") language: String
+    ): Response<TmdbPageDto<TmdbSearchDto>>
+
+    @GET("tv/{id}/similar")
+    suspend fun similarTv(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("language") language: String
+    ): Response<TmdbPageDto<TmdbSearchDto>>
 }
 
 // Field names mirror the TMDB JSON (snake_case) so no annotations are needed.

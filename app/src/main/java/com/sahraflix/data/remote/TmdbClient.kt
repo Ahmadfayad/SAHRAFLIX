@@ -24,6 +24,8 @@ class TmdbClient(private val api: TmdbApi, val isConfigured: Boolean) {
     suspend fun search(query: String) = request { api.searchMulti(query, 1, language) }
     suspend fun movie(id: Int) = request { api.movie(id, language) }
     suspend fun tv(id: Int) = request { api.tv(id, language) }
+    suspend fun similarMovies(id: Int) = request { api.similarMovies(id = id, language = language) }
+    suspend fun similarTv(id: Int) = request { api.similarTv(id = id, language = language) }
 
     fun trailerKey(videos: TmdbVideosDto?): String? = videos?.results
         ?.filter { it.site.equals("YouTube", true) }

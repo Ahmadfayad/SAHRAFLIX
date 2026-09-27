@@ -31,11 +31,12 @@ class ProfileRepositoryImpl @Inject constructor(
     override val selectedProfileId: Flow<Long?> = kotlinx.coroutines.flow.flow { emit(preferences.getLong(CURRENT_PROFILE_ID)) }
     override val isUnlocked: Flow<Boolean> = _isUnlocked.asStateFlow()
 
-    override suspend fun createProfile(name: String, pin: String?): UserProfile {
+    override suspend fun createProfile(name: String, avatarKey: String, pin: String?): UserProfile {
         val cleanName = name.trim().ifBlank { "Profile" }
         val cleanPin = pin?.trim()?.takeIf { it.isNotEmpty() }
         val entity = UserProfileEntity(
             name = cleanName,
+            avatarKey = avatarKey,
             pinEnabled = cleanPin != null
         )
         val id = profileDao.insert(entity)

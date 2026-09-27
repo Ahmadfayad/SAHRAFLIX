@@ -42,14 +42,12 @@ fun HomeScreen(
     val playlists by viewModel.playlists.collectAsState()
     val continueWatching by viewModel.continueWatching.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
-    val onNow by viewModel.onNow.collectAsState()
-    val live = viewModel.live.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
     val trendingMovies = viewModel.trendingMovies.collectAsLazyPagingItems()
     val trendingSeries = viewModel.trendingSeries.collectAsLazyPagingItems()
 
-    // Live channels & movies play immediately; series and TMDB titles open their detail page.
+    // Movies play immediately; series and TMDB titles open their detail page.
     val open: (CatalogEntry) -> Unit = { entry ->
         when (entry) {
             is CatalogEntry.Iptv -> if (entry.stream.streamType == StreamType.SERIES) onOpenDetail(entry) else player.play(entry)
@@ -57,7 +55,7 @@ fun HomeScreen(
         }
     }
     val details: (CatalogEntry) -> Unit = { entry ->
-        if (entry is CatalogEntry.Iptv && entry.stream.streamType == StreamType.LIVE) player.toggleFavorite(entry) else onOpenDetail(entry)
+        onOpenDetail(entry)
     }
 
     LazyColumn(
@@ -87,18 +85,6 @@ fun HomeScreen(
                 progress = { e -> continueWatching.firstOrNull { it.entry.id == e.id }?.progress }
             )
         }
-        item(key = "favs") { EntryRail("Favourite channels", favorites, open, onLongClick = { player.toggleFavorite(it) }) }
-        item(key = "now") {
-            EntryRail(
-                title = "On now",
-                entries = onNow.map { it.entry },
-                onClick = open,
-                onLongClick = { player.toggleFavorite(it) },
-                subtitle = { e -> onNow.firstOrNull { it.entry.id == e.id }?.programme },
-                progress = { e -> onNow.firstOrNull { it.entry.id == e.id }?.progress }
-            )
-        }
-        item(key = "live") { PagedRail("Live TV", live, open, onLongClick = details) }
         item(key = "movies") { PagedRail("Movies", movies, open, onLongClick = details) }
         item(key = "series") { PagedRail("Series", series, open) }
         item(key = "tm") { PagedRail("Trending movies", trendingMovies, open) }
