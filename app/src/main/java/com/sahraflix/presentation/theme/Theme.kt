@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.sahraflix.presentation.LocalUiEnvironment
 import androidx.compose.material3.MaterialTheme as M3Theme
 import androidx.compose.material3.darkColorScheme as m3Dark
 import androidx.tv.material3.MaterialTheme as TvTheme
@@ -11,52 +12,55 @@ import androidx.tv.material3.Typography as TvTypography
 import androidx.tv.material3.darkColorScheme as tvDark
 
 private val TvColors = tvDark(
-    primary = SahraGold,
-    onPrimary = CinematicCharcoal,
-    secondary = EmbersGlow,
-    background = CinematicCharcoal,
-    onBackground = CinemaWhite,
-    surface = SurfaceCard,
-    onSurface = CinemaWhite,
-    onSurfaceVariant = MutedSilver,
-    scrim = DeepShadow
+    primary          = NebulaCrimson,
+    onPrimary        = TextPrimary,
+    secondary        = AuroraViolet,
+    background       = VoidBlack,
+    onBackground     = TextPrimary,
+    surface          = InkCard,
+    onSurface        = TextPrimary,
+    onSurfaceVariant = TextSecondary,
+    scrim            = VoidBlack
 )
 
-// The app mixes TV Material (cards, buttons) with Compose Material3 (text fields, navigation,
-// dialogs). Both need the dark palette, otherwise M3 widgets render in the default light theme.
 private val M3Colors = m3Dark(
-    primary = SahraGold,
-    onPrimary = CinematicCharcoal,
-    secondary = EmbersGlow,
-    background = CinematicCharcoal,
-    onBackground = CinemaWhite,
-    surface = SurfaceCard,
-    onSurface = CinemaWhite,
-    surfaceVariant = CinematicCharcoal,
-    onSurfaceVariant = MutedSilver,
-    surfaceContainer = DeepShadow,
-    secondaryContainer = GoldWash,
-    onSecondaryContainer = SahraGold,
-    scrim = DeepShadow
+    primary                = NebulaCrimson,
+    onPrimary              = TextPrimary,
+    secondary              = AuroraViolet,
+    background             = VoidBlack,
+    onBackground           = TextPrimary,
+    surface                = InkCard,
+    onSurface              = TextPrimary,
+    surfaceVariant         = AbyssBlue,
+    onSurfaceVariant       = TextSecondary,
+    surfaceContainer       = VoidBlack,
+    secondaryContainer     = NebulaCrimson.copy(alpha = 0.12f),
+    onSecondaryContainer   = NebulaCrimson,
+    scrim                  = VoidBlack
 )
 
 private val Type = TvTypography(
-    displaySmall = TextStyle(color = CinemaWhite, fontSize = 36.sp, fontWeight = FontWeight.Bold),
-    headlineLarge = TextStyle(color = CinemaWhite, fontSize = 32.sp, fontWeight = FontWeight.Bold),
-    headlineSmall = TextStyle(color = CinemaWhite, fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = TextStyle(color = CinemaWhite, fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(color = CinemaWhite, fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(color = CinemaWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium),
-    bodyLarge = TextStyle(color = MutedSilver, fontSize = 16.sp),
-    bodyMedium = TextStyle(color = MutedSilver, fontSize = 14.sp),
-    bodySmall = TextStyle(color = MutedSilver, fontSize = 12.sp),
-    labelMedium = TextStyle(color = MutedSilver, fontSize = 12.sp),
-    labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    displaySmall  = TextStyle(color = TextPrimary,   fontSize = 36.sp, fontWeight = FontWeight.Bold),
+    headlineLarge = TextStyle(color = TextPrimary,   fontSize = 32.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(color = TextPrimary,   fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge    = TextStyle(color = TextPrimary,   fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium   = TextStyle(color = TextPrimary,   fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall    = TextStyle(color = TextPrimary,   fontSize = 14.sp, fontWeight = FontWeight.Medium),
+    bodyLarge     = TextStyle(color = TextSecondary, fontSize = 16.sp),
+    bodyMedium    = TextStyle(color = TextSecondary, fontSize = 14.sp),
+    bodySmall     = TextStyle(color = TextSecondary, fontSize = 12.sp),
+    labelMedium   = TextStyle(color = TextMuted,     fontSize = 12.sp),
+    labelLarge    = TextStyle(color = TextPrimary,   fontSize = 14.sp, fontWeight = FontWeight.Bold)
 )
 
 @Composable
 fun SahraflixTheme(content: @Composable () -> Unit) {
+    val env = LocalUiEnvironment.current
     M3Theme(colorScheme = M3Colors) {
-        TvTheme(colorScheme = TvColors, typography = Type, content = content)
+        if (env.isTv) {
+            TvTheme(colorScheme = TvColors, typography = Type, content = content)
+        } else {
+            content()
+        }
     }
 }

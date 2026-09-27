@@ -13,7 +13,8 @@ sealed interface ContentDetails {
         override val backdropUrl: String? = null,
         val seasons: Map<Int, List<IptvEpisode>> = emptyMap(),
         val rating: Double? = null,
-        val releaseYear: Int? = null
+        val releaseYear: Int? = null,
+        val tmdbMatch: Tmdb? = null
     ) : ContentDetails {
         override val title: String get() = entry.title
         override val posterUrl: String? get() = entry.posterUrl
@@ -34,7 +35,9 @@ sealed interface ContentDetails {
         /** YouTube key of the official trailer, if any. */
         val trailerYoutubeKey: String?,
         /** Matching titles found in the user's own IPTV VOD library. */
-        val libraryMatches: List<CatalogEntry.Iptv>
+        val libraryMatches: List<CatalogEntry.Iptv>,
+        /** Similar movies/series recommendations from TMDB. */
+        val similar: List<CatalogEntry.Tmdb> = emptyList()
     ) : ContentDetails {
         override val title: String get() = entry.title
         override val posterUrl: String? get() = entry.posterUrl

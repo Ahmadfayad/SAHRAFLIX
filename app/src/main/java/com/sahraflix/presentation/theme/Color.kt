@@ -2,13 +2,43 @@ package com.sahraflix.presentation.theme
 
 import androidx.compose.ui.graphics.Color
 
-val SahraGold = Color(0xFFD4AF37)
-val EmbersGlow = Color(0xFFFFCC66)
-val CinematicCharcoal = Color(0xFF1A1A22)
-val SurfaceCard = Color(0xFF25252A)
-val DeepShadow = Color(0xFF0A0A0F)
-val CinemaWhite = Color(0xFFF0F0F0)
-val MutedSilver = Color(0xFF9BA0A6)
-val ScrimOverlay = DeepShadow.copy(alpha = 0.7f)
-val GoldWash = SahraGold.copy(alpha = 0.10f)
-val FocusGlowColor = EmbersGlow.copy(alpha = 0.40f)
+// ── Core backgrounds ─────────────────────────────────────────────────────────
+val VoidBlack     = Color(0xFF07080F)
+val AbyssBlue     = Color(0xFF0C1120)
+val InkCard       = Color(0xFF141C2E)
+val SlateElevated = Color(0xFF1E2640)
+val SlateDivider  = Color(0xFF2A3350)
+
+// ── Brand crimson ─────────────────────────────────────────────────────────────
+val NebulaCrimson = Color(0xFFE5192E)
+val CrimsonLight  = Color(0xFFFF3A50)
+val CrimsonDim    = Color(0xFF7A0A16)
+
+// ── Accent ────────────────────────────────────────────────────────────────────
+val AuroraViolet  = Color(0xFFA855F7)
+val NeonTeal      = Color(0xFF22D3EE)
+
+// ── Text ──────────────────────────────────────────────────────────────────────
+val TextPrimary   = Color(0xFFF0F2F8)
+val TextSecondary = Color(0xFF8A93A8)
+val TextMuted     = Color(0xFF4A5068)
+
+// ── Semantic ─────────────────────────────────────────────────────────────────
+val FocusRingColor = NebulaCrimson.copy(alpha = 0.55f)
+val OverlayScrim   = VoidBlack.copy(alpha = 0.82f)
+val CardGloss      = Color(0x0DFFFFFF)
+
+// ── Legacy aliases — keeps unported files compiling ───────────────────────────
+val SahraGold         = NebulaCrimson
+val EmbersGlow        = CrimsonLight
+val CinematicCharcoal = AbyssBlue
+val SurfaceCard       = InkCard
+val DeepShadow        = VoidBlack
+val CinemaWhite       = TextPrimary
+val MutedSilver       = TextSecondary
+val ScrimOverlay      = OverlayScrim
+val GoldWash          = NebulaCrimson.copy(alpha = 0.10f)
+val FocusGlowColor    = CrimsonLight.copy(alpha = 0.40f)
+val SahraRed          = NebulaCrimson
+val CinematicBlack    = VoidBlack
+val DarkSlateBg       = AbyssBlue

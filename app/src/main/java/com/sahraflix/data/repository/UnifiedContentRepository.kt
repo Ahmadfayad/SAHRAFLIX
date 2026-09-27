@@ -4,6 +4,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
+import com.sahraflix.core.AppConfig
 import com.sahraflix.data.local.dao.PlaylistDao
 import com.sahraflix.data.local.dao.StreamDao
 import com.sahraflix.data.local.dao.StreamingItemDao
@@ -94,33 +95,86 @@ class UnifiedContentRepository @Inject constructor(
     override suspend fun iptvDetails(streamId: String): ContentDetails.Iptv {
         val entity = streamDao.getById(streamId) ?: throw NoSuchElementException("This item is no longer in your playlist")
         val entry = entity.toEntry()
-        if (entity.streamType != StreamType.SERIES) return ContentDetails.Iptv(entry)
-        val playlist = playlistDao.getById(entity.playlistId) ?: return ContentDetails.Iptv(entry)
+        
+        var tmdbFull: ContentDetails.Tmdb? = null
+        if (entity.streamType == StreamType.MOVIE || entity.streamType == StreamType.SERIES) {
+            val fragment = TitleMatcher.searchFragment(entity.name)
+            if (fragment.length >= 2) {
+                val match = searchTmdb(fragment).firstOrNull { it.isSeries == (entity.streamType == StreamType.SERIES) }
+                if (match != null) {
+                    tmdbFull = runCatching { tmdbDetails(match.tmdbId, match.isSeries) }.getOrNull()
+                }
+            }
+        }
+
+        if (entity.streamType != StreamType.SERIES) {
+            return ContentDetails.Iptv(
+                entry = entry, 
+                description = tmdbFull?.description, 
+                backdropUrl = tmdbFull?.backdropUrl,
+                rating = tmdbFull?.rating,
+                releaseYear = tmdbFull?.releaseYear,
+                tmdbMatch = tmdbFull
+            )
+        }
+        val playlist = playlistDao.getById(entity.playlistId) ?: return ContentDetails.Iptv(
+            entry, tmdbFull?.description, tmdbFull?.backdropUrl, emptyMap(), tmdbFull?.rating, tmdbFull?.releaseYear, tmdbFull
+        )
         if (playlist.type != PlaylistType.XTREAM || entity.providerId == null) {
             // M3U "series" rows are individual episodes; play them directly.
-            return ContentDetails.Iptv(entry, seasons = mapOf(1 to listOf(IptvEpisode(entity.id, 1, 1, entity.name, entity.streamUrl))))
+            return ContentDetails.Iptv(
+                entry = entry, 
+                description = tmdbFull?.description, 
+                backdropUrl = tmdbFull?.backdropUrl,
+                seasons = mapOf(1 to listOf(IptvEpisode(entity.id, 1, 1, entity.name, entity.streamUrl))),
+                rating = tmdbFull?.rating,
+                releaseYear = tmdbFull?.releaseYear,
+                tmdbMatch = tmdbFull
+            )
         }
         val info = xtream.seriesEpisodes(playlist, entity.providerId)
-        return ContentDetails.Iptv(entry, info.plot, info.backdrop, info.episodes.groupBy { it.season }, info.rating, info.year)
+        return ContentDetails.Iptv(
+            entry, 
+            info.plot ?: tmdbFull?.description, 
+            info.backdrop ?: tmdbFull?.backdropUrl, 
+            info.episodes.groupBy { it.season }, 
+            info.rating ?: tmdbFull?.rating, 
+            info.year ?: tmdbFull?.releaseYear,
+            tmdbFull
+        )
     }
 
     override suspend fun tmdbDetails(tmdbId: Int, isSeries: Boolean): ContentDetails.Tmdb {
         return if (isSeries) {
             val tv = tmdb.tv(tmdbId)
+            val similarTv = tmdb.similarTv(tmdbId)
             val entry = CatalogEntry.Tmdb(tv.id, tv.name.orEmpty(), tmdb.image(tv.poster_path), true, tv.overview,
-                tmdb.year(tv.first_air_date), tv.vote_average, tmdb.image(tv.backdrop_path, com.sahraflix.core.AppConfig.TMDB_IMAGE_BACKDROP))
+                tmdb.year(tv.first_air_date), tv.vote_average, tmdb.image(tv.backdrop_path, AppConfig.TMDB_IMAGE_BACKDROP))
+            
+            val similarEntries = similarTv.results.mapNotNull {
+                CatalogEntry.Tmdb(it.id, it.name.orEmpty(), tmdb.image(it.poster_path), true, it.overview,
+                    tmdb.year(it.first_air_date), it.vote_average)
+            }
+                
             ContentDetails.Tmdb(entry, tv.overview, entry.backdropUrl, tv.vote_average, entry.releaseYear,
                 tv.episode_run_time.firstOrNull(), tv.genres.map { it.name }, tmdb.cast(tv.credits), tmdb.seasons(tv.seasons),
                 tmdb.providers(tv.watchProviders), tmdb.trailerKey(tv.videos),
-                libraryMatches(entry.title, null, StreamType.SERIES))
+                libraryMatches(entry.title, null, StreamType.SERIES), similarEntries)
         } else {
             val m = tmdb.movie(tmdbId)
+            val similarMovies = tmdb.similarMovies(tmdbId)
             val entry = CatalogEntry.Tmdb(m.id, m.title.orEmpty(), tmdb.image(m.poster_path), false, m.overview,
-                tmdb.year(m.release_date), m.vote_average, tmdb.image(m.backdrop_path, com.sahraflix.core.AppConfig.TMDB_IMAGE_BACKDROP))
+                tmdb.year(m.release_date), m.vote_average, tmdb.image(m.backdrop_path, AppConfig.TMDB_IMAGE_BACKDROP))
+                
+            val similarEntries = similarMovies.results.mapNotNull {
+                CatalogEntry.Tmdb(it.id, it.title.orEmpty(), tmdb.image(it.poster_path), false, it.overview,
+                    tmdb.year(it.release_date), it.vote_average)
+            }
+                
             ContentDetails.Tmdb(entry, m.overview, entry.backdropUrl, m.vote_average, entry.releaseYear, m.runtime,
                 m.genres.map { it.name }, tmdb.cast(m.credits), emptyList(),
                 tmdb.providers(m.watchProviders), tmdb.trailerKey(m.videos),
-                libraryMatches(entry.title, entry.releaseYear, StreamType.MOVIE))
+                libraryMatches(entry.title, entry.releaseYear, StreamType.MOVIE), similarEntries)
         }
     }
 

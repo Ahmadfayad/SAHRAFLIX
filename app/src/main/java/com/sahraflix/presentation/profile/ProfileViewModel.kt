@@ -29,9 +29,9 @@ class ProfileViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    fun createProfile(name: String, pin: String?) {
+    fun createProfile(name: String, avatarKey: String = "1", pin: String?) {
         viewModelScope.launch {
-            runCatching { repository.createProfile(name, pin) }
+            runCatching { repository.createProfile(name, avatarKey, pin) }
                 .onFailure { _error.value = it.message ?: "Unable to create profile" }
         }
     }

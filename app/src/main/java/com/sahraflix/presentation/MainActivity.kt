@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -45,6 +46,7 @@ import com.sahraflix.presentation.settings.SettingsViewModel
 import com.sahraflix.presentation.settings.UiMode
 import com.sahraflix.presentation.theme.SahraGold
 import com.sahraflix.presentation.theme.SahraflixTheme
+import com.sahraflix.presentation.onboarding.SplashModeScreen
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 
@@ -65,27 +67,46 @@ class MainActivity : ComponentActivity() {
             val message by playerViewModel.message.collectAsState()
             val unlocked by profileViewModel.isUnlocked.collectAsState()
             val uiMode by settingsViewModel.uiMode.collectAsState()
-            val widthClass = calculateWindowSizeClass(this).widthSizeClass
+            val modeChosen by settingsViewModel.modeChosen.collectAsState()
+            val widthClass = calculateWindowSizeClass(this)
             val isTv = when (uiMode) {
                 UiMode.TV -> true
                 UiMode.MOBILE -> false
-                UiMode.AUTO -> widthClass == WindowWidthSizeClass.Expanded ||
+                UiMode.AUTO -> widthClass.widthSizeClass == WindowWidthSizeClass.Expanded ||
                     packageManager.hasSystemFeature("android.software.leanback")
             }
+            
+            LaunchedEffect(isTv) {
+                if (isTv) {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                } else {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
 
-            SahraflixTheme {
-                CompositionLocalProvider(LocalPlayerViewModel provides playerViewModel) {
+            CompositionLocalProvider(LocalUiEnvironment provides UiEnvironment(isTv, widthClass)) {
+                SahraflixTheme {
+                    CompositionLocalProvider(LocalPlayerViewModel provides playerViewModel) {
                     Box(Modifier.fillMaxSize().sahraCinematicGradient()) {
-                        if (!unlocked) {
-                            ProfileGateScreen(viewModel = profileViewModel)
-                        } else {
-                            // Navigation stays composed underneath so screen state survives the player.
-                            if (!inPip.value) AppNavigation(isTvMode = isTv)
-                            if (playerVisible) {
-                                PlayerScreen(playerViewModel, isInPip = inPip.value)
-                                BackHandler { playerViewModel.closePlayer() }
+                        when {
+                            !modeChosen -> {
+                                SplashModeScreen { mode -> 
+                                    settingsViewModel.setUiMode(mode) 
+                                }
+                            }
+                            !unlocked -> {
+                                ProfileGateScreen(viewModel = profileViewModel)
+                            }
+                            else -> {
+                                // Navigation stays composed underneath so screen state survives the player.
+                                if (!inPip.value) AppNavigation()
+                                if (playerVisible) {
+                                    PlayerScreen(playerViewModel, isInPip = inPip.value)
+                                    BackHandler { playerViewModel.closePlayer() }
+                                }
                             }
                         }
+                        
                         if (resolving && !playerVisible) {
                             CircularProgressIndicator(color = SahraGold, modifier = Modifier.align(Alignment.Center))
                         }
@@ -104,6 +125,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()

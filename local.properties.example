@@ -1,0 +1,4 @@
+# Copy to local.properties and set the real Android SDK path and TMDB key.
+sdk.dir=C:/Users/YourName/AppData/Local/Android/Sdk
+TMDB_API_KEY=your_tmdb_api_key_here
+# Example format only: 0091156499dd827fb4db5e69a35ed4a1
